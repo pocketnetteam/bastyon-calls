@@ -1,0 +1,299 @@
+
+.bc
+  -webkit-tap-highlight-color: transparent !important
+  &-container
+    display: flex
+    flex-wrap: wrap
+    justify-content: space-evenly
+    align-items: center
+    &.full
+      position: fixed !important
+      z-index: 300000
+      width: 100vw
+      height: 100vh
+      top: 0
+    &.middle
+      .bc
+        &-video
+          &-container
+            width: auto
+            height: auto
+            max-width: 20vw
+            max-height: initial !important
+            padding-bottom: 0
+    &.active
+      left: 0
+      right: 0
+      //width: 100vw
+      //height: 100vh
+    &.minified
+      position: fixed
+      width: auto
+      height: auto
+      top: initial
+      right: initial
+      bottom: 20px
+      left: 20px
+      border: 1px solid transparent
+      border-radius: 10%
+      overflow: hidden
+      cursor: pointer
+      .bc
+        &-video
+          &-container
+            width: auto
+            height: auto
+            max-width: 20vw
+            max-height: initial !important
+            padding-bottom: 0
+          &.minified
+            display: none
+          &.active
+            height: 100%
+            max-width: 250px
+            video
+              height: 20vw
+              width: auto
+              max-height: 250px
+          .name
+            @media screen and (max-width: 768px)
+              display: none
+          &-btn
+            display: none
+        &-controls
+          bottom: 3%
+          min-width: 20vw
+          justify-content: space-evenly
+          opacity: 0
+          transition: opacity .3s ease
+          @media screen and (max-width: 1200px)
+            display: none !important
+          .bc
+            &-btn
+              width: 4vw
+              height: 4vw
+              max-width: 55px
+              max-height: 55px
+              font-size: 0.8rem
+              margin: 0
+              &.camera, &.minimize
+                display: none
+
+
+      &:hover
+        .bc-controls
+          display: flex
+          opacity: 1
+
+      @media screen and (max-width: 768px)
+        top: 65px !important
+        right: 10px !important
+        left: initial !important
+        bottom: initial !important
+        border-radius: 10%
+        overflow: hidden
+    & > div
+      z-index: 333333
+
+
+  &-incoming-call
+    position: fixed
+    top: 28px
+    z-index: 33333
+    padding: 10px
+    width: 494px
+    display: flex
+    flex-wrap: wrap
+    justify-content: space-between
+    align-items: center
+    background: radial-gradient(87.44% 183.75% at 50% 50%, rgba(0, 0, 0, 0) 0%, #000000 100%), #242F3D
+    box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.5)
+    border-radius: 12px
+    @media screen and (max-width: 576px)
+      padding: 16px
+      width: 90vw
+    .user
+      display: flex
+      justify-content: space-between
+      max-width: 50%
+      @media screen and (max-width: 576px)
+        max-width: 70%
+        margin-bottom: 16px
+
+      .title
+        text-align: center
+        text-overflow: ellipsis
+        white-space: nowrap
+        overflow: hidden
+        line-height: 20px
+        color: rgb(var(--color-cc-white))
+
+        .name
+          font-size: 16px
+          text-align: left
+          color: rgb(var(--text-on-bg-ac-color))
+
+        .description
+          color: rgb(var(--neutral-grad-2))
+          font-size: 14px
+
+      .avatar
+        margin-right: 16px
+        img
+          border: 1px solid rgba(var(--background-hidden-layer), 0,1)
+          width: 44px
+          height: 44px
+          border-radius: 50%
+          overflow: hidden
+    .buttons
+      display: flex
+      justify-content: space-between
+      @media screen and (max-width: 576px)
+        width: 100%
+        justify-content: space-between
+        .bc-btn
+          width: 48% !important
+          margin: 0
+      .bc-btn
+        width: 56px
+        height: 48px
+        border-radius: 12px
+        margin: 0 10px
+        border: none
+      .bc-answer
+        background: linear-gradient(90deg, #495AFF 0%, #0ACFFE 100%), #00A4FF
+        & i
+          transform: rotate(90deg)
+      .bc-decline
+        background: linear-gradient(90deg, #EB3349 2.65%, #F45C43 100.53%), #EB5757
+        & i
+          transform: rotate(225deg)
+      i
+        color: rgb(var(--text-on-bg-ac-color))
+
+  &-ended-call
+    position: fixed
+    max-width: 250px
+    max-height: 150px
+    left: calc(50% - 125px)
+    top: calc(50% - 75px)
+    border-radius: 20px
+    display: flex
+    align-items: center
+    justify-content: space-around
+    flex-direction: column
+    background: radial-gradient(87.44% 183.75% at 50% 50%, rgba(0, 0, 0, 0) 0%, #000000 100%), #242F3D
+
+    & div
+      color: rgb(var(--text-on-bg-ac-color))
+    .title
+
+    .description
+
+    button
+      cursor: pointer
+      &:hover
+
+
+  &-video
+    position: relative
+    display: flex
+    justify-content: center
+    @media screen and (orientation : portrait)
+      max-width: 100%
+    &-container
+      display: flex
+      justify-content: center
+      flex-wrap: wrap
+      align-items: center
+      width: 100vw
+      height: 100vh
+      background: radial-gradient(55.29% 79.17% at 50% 47.76%, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.88) 100%), #242F3D
+      box-shadow: 0px 32px 64px rgba(0, 0, 0, 0.56), 0px 2px 21px rgba(0, 0, 0, 0.55)
+      padding-bottom: 5%
+    @media screen and (orientation : portrait)
+      justify-content: center
+    .name
+      position: absolute
+      bottom: 0
+      left: 0
+      text-align: center
+      font-size: 12px
+      height: 12px
+      line-height: 12px
+      min-width: 60px
+      background-color: rgba(255,255,255,0.4)
+
+    & video
+      max-height: 100%
+      width: 100%
+      @media screen and (orientation : portrait)
+        max-height: 40vh
+    &.active
+      margin: 0 auto
+      height: 100vh
+
+      max-height: 100vh
+      video
+        max-height: 100vh
+        max-width: 100vw
+        width: auto !important
+    &.minified
+      margin: 0
+      border-radius: 10%
+      z-index: 33333333
+      position: fixed
+      right: 30px
+      bottom: 15%
+      max-width: 15vw
+      overflow: hidden
+      video
+        height: 15vw
+        width: auto
+      @media screen and (orientation : portrait)
+        max-width: 15vh
+        video
+          height: 15vh
+          width: auto
+
+  &-controls
+    display: flex
+    justify-content: center
+    position: fixed
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.99466) 99.44%)
+    bottom: 0
+    width: 100%
+    padding: 5% 0
+    min-width: 280px !important
+    max-width: 100vw
+    & .bc-btn
+      margin: 0 20px
+      background: rgba(var(--neutral-grad-2),.4)
+      text-align: center
+      font-size: 1em
+      font-weight: 600
+      border-radius: 50%
+      width: 55px
+      height: 55px
+      display: flex
+      align-items: center
+      justify-content: center
+      cursor: pointer
+      border: none
+
+      &.active
+        background: rgb(var(--text-on-bg-ac-color))
+        & i
+          color: rgb(var(--text-color))
+      @media screen and (max-width: 768px)
+        margin: 0 10px
+        width: 45px
+        height: 45px
+      & i
+        pointer-events: none
+        color: rgb(var(--text-on-bg-ac-color))
+      &.bc-decline
+        background: rgb(var(--color-bad))
+        border: 1px solid transparent
+        transform: rotate(225deg)
+
