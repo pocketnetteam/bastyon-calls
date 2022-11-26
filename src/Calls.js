@@ -18,7 +18,6 @@ class BastyonCalls extends EventEmitter {
 	isMuted = false
 	activeCall = null
 	secondCall = null
-	isMuted = false
 	syncInterval = null
 	isWaitingForConnect = false
 
@@ -31,7 +30,7 @@ class BastyonCalls extends EventEmitter {
 						${this.getAvatar()}
 					</div>
 					<div class="title">
-						<div class="name">${this.activeCall.initiator.name}</div>
+						<div class="name">${this.activeCall.initiator.source.name}</div>
 						<div class="description">Входящий звонок</div>
 					</div>
 				</div>
@@ -48,7 +47,7 @@ class BastyonCalls extends EventEmitter {
 				<div class="avatar">
 						${this.getAvatar()}
 				</div>
-				<div class="name">${this.activeCall.initiator.name}</div>
+				<div class="name">${this.activeCall.initiator.source.name}</div>
 				<div class="description">Звонок завершен</div>
 			</div>`
 		},
@@ -58,7 +57,7 @@ class BastyonCalls extends EventEmitter {
 			<div class="bc-topnav">
 				<div class="bc-call-info">
 					<div class="time" id="time">12:02</div>
-					<div class="name">${this.activeCall.initiator.name}</div>
+					<div class="name">${this.activeCall.initiator.source.name}</div>
 				</div>
 				<div class="options">
 					<button class="bc-btn bc-cog" id="bc-cog"><i class="fas fa-cog"></i></button>
@@ -123,6 +122,7 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	initTemplates(outerRoot){
+		console.log(outerRoot)
 		outerRoot.insertAdjacentHTML('beforeend', `<div class="bc-container"><div id="bc-notify" class="bc-notify"></div><div id="bc-root"></div></div>`);
 		this.root = document.getElementById('bc-root')
 		this.notify = document.getElementById('bc-notify')
@@ -138,8 +138,8 @@ class BastyonCalls extends EventEmitter {
 
 
 	initEvents(){
+
 		this.client.on("Call.incoming", async (call) => {
-			debugger
 			let members = this.client.store.rooms[ call.roomId ].currentState.members
 			let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
 			let initiator = members[ initiatorId ]
@@ -147,11 +147,11 @@ class BastyonCalls extends EventEmitter {
 
 			call.initiator = initiator
 			call.user = user
-			console.log('перед', this)
-			this.options.getUserInfo([initiator.userId]).then((res) => {
+			console.log('перед', initiator)
+			this.options.getUserInfo(initiator.userId).then((res) => {
+				console.log('res', res)
 
-
-				 initiator.source = res[0]
+				 initiator.source = res[0] || res
 				 this.addCallListeners(call)
 				 if (!this.activeCall) {
 					 this.activeCall = call
@@ -175,9 +175,6 @@ class BastyonCalls extends EventEmitter {
 			if (this.activeCall.state === "ringing") {
 				this.activeCall.answer()
 				console.log('Ответ на',this.activeCall)
-				console.log('remote tracks', this.activeCall.remoteStream.getTracks())
-
-				console.log('remote senders', this.activeCall.peerConn.getSenders())
 				this.renderTemplates.clearNotify()
 				this.renderTemplates.videoCall()
 			} else {
@@ -206,13 +203,14 @@ class BastyonCalls extends EventEmitter {
 
 	initsync() {
 		let container = document.querySelector('.bc-video-container')
+		console.log('sync',this?.activeCall.remoteStream.getVideoTracks())
+		let track = this?.activeCall.remoteStream.getVideoTracks()[0]
 		this.syncInterval = setInterval(() => {
 			if(this.root.classList.contains('minified')){
-				console.log(this?.activeCall.remoteStream.getVideoTracks()[0].getSettings())
-				let ratio = this?.activeCall.remoteStream.getVideoTracks()[0].getSettings().aspectRatio
-				if (ratio){
-					container.style.aspectRatio = ratio
-					if (ratio < 1) {
+				let aspectRatio = track.getSettings().aspectRatio
+				if (aspectRatio){
+					container.style.aspectRatio = aspectRatio
+					if (aspectRatio < 1) {
 						container.classList.add('vertical')
 					} else {
 						container.classList.remove('vertical')
@@ -246,12 +244,14 @@ class BastyonCalls extends EventEmitter {
 			control.firstChild.classList.add('fa-microphone')
 		}
 		sender.track.enabled = !sender.track.enabled
+
+		console.log('mute',this.activeCall.peerConn.getSenders())
 	}
 
 	hide(e){
 		e.stopPropagation()
 		let sender = this.activeCall.peerConn.getSenders().find((s) => {
-			return s.track.kind === 'video';
+			return s.track?.kind === 'video' || !s.track
 		})
 
 		let control = document.querySelector('.bc-hide')
@@ -264,13 +264,27 @@ class BastyonCalls extends EventEmitter {
 			control.classList.remove('active')
 			control.firstChild.classList.add('fa-video')
 		}
+
 		sender.track.enabled = !sender.track.enabled
 
+		console.log('hide',this.activeCall.peerConn.getSenders(), this.activeCall.peerConn.getReceivers())
+		console.log('remote tracks',this.activeCall.remoteStream.getTracks())
+
+	}
+
+	cameraCount() {
+		navigator.mediaDevices.enumerateDevices().then((devices) => {
+			let cameras = devices.filter(d => d.kind === 'videoinput')
+			console.log(cameras)
+			if(cameras.length <= 1){
+				document.getElementById("bc-camera").style.display = 'none'
+				console.log('no cameras')
+			}
+		})
 	}
 
 	camera(e) {
 		let self = this
-		if (e) e.stopPropagation()
 
 		try {
 			navigator.mediaDevices.enumerateDevices().then( (dev) => {
@@ -332,11 +346,11 @@ class BastyonCalls extends EventEmitter {
 						  if (track.muted) {
 							  console.log('Трек не доступен', track)
 						  }
-						  console.log('новый видео тре', track)
 						  sender.replaceTrack(track);
 						  self.videoStreams.local.srcObject = stream
-						  console.log(self.videoStreams.local.srcObject)
+
 					  })
+					  this.hide()
 				  }).catch(function(error) {
 
 					console.log("Const stream: " + error.message);
@@ -408,15 +422,16 @@ class BastyonCalls extends EventEmitter {
 		call.initiator = initiator
 		call.user = user
 
-		initiator.source = await this.options.getUserInfo([initiator.userId])[0]
-
-		this.options.getUserInfo([initiator.userId]).then((res) => {
-			initiator.source = res[0]
+		initiator.source = await this.options.getUserInfo(initiator.userId)[0]
+		console.log(initiator)
+		this.options.getUserInfo(initiator.userId).then((res) => {
+			console.log(res)
+			initiator.source = res[0] || res
 
 			this.addCallListeners(call)
 
 			this.renderTemplates.videoCall()
-		}).catch(e => console.log(e))
+		}).catch(e => console.log('get user info error',e))
 
 
 
@@ -468,10 +483,11 @@ class BastyonCalls extends EventEmitter {
 				try {
 					this.activeCall.setLocalVideoElement(this.videoStreams.local)
 					this.activeCall.setRemoteVideoElement(this.videoStreams.remote)
+					this.cameraCount()
 					this.addVideoInterfaceListeners()
 					console.log('стримы',this.videoStreams)
 				} catch (e) {
-					console.log('init interface',e)
+					console.log('init interface error',e)
 				}
 				break;
 		}
@@ -496,8 +512,11 @@ class BastyonCalls extends EventEmitter {
 	addCallListeners(call){
 
 		call.on('state', (a,b) => {
+			console.log('state', a)
 			if (a === 'connected') {
 				this.showRemoteVideo()
+				console.log('remote tracks', this.activeCall.remoteStream.getTracks())
+				console.log('local senders', this.activeCall.peerConn.getSenders())
 				this.initsync()
 			}
 			if (a === 'ended') {
@@ -557,7 +576,7 @@ class BastyonCalls extends EventEmitter {
 		if(this.activeCall.initiator?.source?.image){
 			return `<img src="${this.activeCall.initiator.source.image}"/>`
 		}
-		return this.activeCall.initiator.name[0].toUpperCase()
+		return this.activeCall.initiator.source.name[0].toUpperCase()
 	}
 
 	showRemoteVideo() {
