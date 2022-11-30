@@ -99,8 +99,9 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
           height: 100%
           max-width: 350px
           &.novid
-            height: 250px
-            width: 250px
+            max-height: 250px
+            padding: 1em
+            max-width: 250px
             max-height: 250px
           video
             //height: 20vw
@@ -147,7 +148,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
       overflow: hidden
 
       .bc-video-container
-        max-width: 35vw
+        max-width: 250px
         &.vertical
           max-width: 25vw
       .bc-topnav
@@ -210,6 +211,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
         .description
           color: rgb(var(--neutral-grad-2))
           font-size: 14px
+          text-align: left
 
       .avatar
         margin-right: 16px
@@ -446,7 +448,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
       button
         background: transparent
         border: none
-        cursor: pointerf
+        cursor: pointer
         i
           color: rgb(var(--text-on-bg-ac-color))
 

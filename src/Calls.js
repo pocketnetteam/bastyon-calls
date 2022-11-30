@@ -1,5 +1,6 @@
 import {EventEmitter} from 'events';
 import "./scss/index.sass";
+import {logPlugin} from "@babel/preset-env/lib/debug";
 
 class BastyonCalls extends EventEmitter {
 
@@ -116,7 +117,11 @@ class BastyonCalls extends EventEmitter {
 			this.root.classList.remove('full')
 		},
 		endedCall : (call) => {
-			console.log('endedCall')
+			if (this.root.classList.contains('minified')) {
+				this.root.classList.remove('minified')
+				this.root.classList.add('middle')
+			}
+
 			this.root.innerHTML = this.templates['endedCall']?.call(this,call) || ''
 		}
 	}
@@ -203,21 +208,32 @@ class BastyonCalls extends EventEmitter {
 
 	initsync() {
 		let container = document.querySelector('.bc-video-container')
-		console.log('sync',this?.activeCall.remoteStream.getVideoTracks())
-		let track = this?.activeCall.remoteStream.getVideoTracks()[0]
-		this.syncInterval = setInterval(() => {
-			if(this.root.classList.contains('minified')){
-				let aspectRatio = track.getSettings().aspectRatio
-				if (aspectRatio){
-					container.style.aspectRatio = aspectRatio
-					if (aspectRatio < 1) {
-						container.classList.add('vertical')
-					} else {
-						container.classList.remove('vertical')
+		this.activeCall.peerConn.getStats(null).then((stats) => {
+			let filtered = [...stats].filter(r=> {
+				return r[1].type === 'candidate-pair'
+			})
+			filtered.forEach(c => {
+				console.log(stats.get(c.selectedCandidatePairId))
+			})
+		})
+		this.syncInterval = setInterval((function(){
+
+
+			if(this?.activeCall?.remoteStream) {
+				let track = this?.activeCall?.remoteStream.getVideoTracks()[0]
+				if(this.root.classList.contains('minified')){
+					let aspectRatio = track.getSettings().aspectRatio
+					if (aspectRatio){
+						container.style.aspectRatio = aspectRatio
+						if (aspectRatio < 1) {
+							container.classList.add('vertical')
+						} else {
+							container.classList.remove('vertical')
+						}
 					}
 				}
 			}
-		},1000)
+		}).bind(this),1000)
 	}
 
 	// play(e){
@@ -332,7 +348,6 @@ class BastyonCalls extends EventEmitter {
 				navigator.mediaDevices
 				  .getUserMedia(constraints)
 				  .then(stream => {
-					  console.log(stream.getTracks())
 					  stream.getTracks().forEach(function(track) {
 						  console.log('track', track)
 						  const sender = self.activeCall.peerConn.getSenders().find((s) => {
@@ -384,23 +399,23 @@ class BastyonCalls extends EventEmitter {
 			this.root.classList.remove('full')
 			this.root.classList.add('minified')
 		} else {
-			this.syncInterval = null
+			clearInterval(this.syncInterval)
+			console.log('interval',this.syncInterval)
 			this.root.classList.remove('minified')
 			this.root.classList.add('middle')
 		}
 	}
 
 	async initCall(roomId){
-		console.log('Вызов')
+		console.log('init call')
 		try {
 			const constraints = {
 				video : true
 			}
 			let stream = await navigator.mediaDevices.getUserMedia(constraints)
-			console.log('проверил')
+			console.log('media checked')
 		} catch (e) {
-			console.log('нет доступа к медиа',e)
-			return
+			console.log('media error',e)
 		}
 
 
@@ -409,7 +424,7 @@ class BastyonCalls extends EventEmitter {
 		if (!this.activeCall) {
 			this.activeCall = call
 		} else {
-			console.log('У вас есть активный звонок')
+			console.log('You have active call')
 			return
 		}
 		call.placeVideoCall(document.getElementById("remote"),document.getElementById("local"))
@@ -481,6 +496,7 @@ class BastyonCalls extends EventEmitter {
 					local : document.getElementById("local")
 				}
 				try {
+					console.log('init call interface',this.activeCall)
 					this.activeCall.setLocalVideoElement(this.videoStreams.local)
 					this.activeCall.setRemoteVideoElement(this.videoStreams.remote)
 					this.cameraCount()
@@ -495,7 +511,7 @@ class BastyonCalls extends EventEmitter {
 
 	addVideoInterfaceListeners(){
 		// this.videoStreams.local.addEventListener('click', (e) => this.changeView.call(this, e))
-		this.videoStreams.remote.addEventListener('click', (e) => this.pip.call(this, e))
+		document.getElementById("remote-scene").addEventListener('click', (e) => this.pip.call(this, e))
 		document.getElementById("bc-decline").addEventListener('click', (e) => this.hangup.call(this,e))
 		document.getElementById("bc-mute").addEventListener('click', (e) => this.mute.call(this,e))
 		document.getElementById("bc-hide").addEventListener('click', (e) => this.hide.call(this,e))
@@ -515,27 +531,31 @@ class BastyonCalls extends EventEmitter {
 			console.log('state', a)
 			if (a === 'connected') {
 				this.showRemoteVideo()
-				console.log('remote tracks', this.activeCall.remoteStream.getTracks())
-				console.log('local senders', this.activeCall.peerConn.getSenders())
+				console.log('connected',this.activeCall)
 				this.initsync()
 			}
 			if (a === 'ended') {
-				this.syncInterval = null
+				clearInterval(this.syncInterval)
+				console.log('interval',this.syncInterval)
 			}
 		})
 		call.on("hangup", (call) => {
-			console.log('Звонок окончен',this)
+
+			clearInterval(this.syncInterval)
+			console.log('interval',this.syncInterval)
+			console.log('Call ended',this)
+
 			if (!call) {
 				this.renderTemplates.clearNotify()
 			}
 			if (call.callId === this.secondCall?.callId) {
 				this.secondCall = null
 				this.renderTemplates.clearNotify()
-				console.log('Вторая линия сброшена', call)
+				console.log('second line ended', call)
 			}
 			if (call.callId === this.activeCall?.callId) {
 
-				console.log('Первая линия сброшена', call)
+				console.log('first line ended', call)
 
 				if(this.isWaitingForConnect) {
 					this.activeCall = this.secondCall
@@ -546,6 +566,12 @@ class BastyonCalls extends EventEmitter {
 				this.renderTemplates.clearVideo()
 				this.renderTemplates.clearNotify()
 				if (call.hangupParty === "local" || call.localVideoElement) {
+					if (this.root.classList.contains('minified') || !this.root.classList.length) {
+						this.renderTemplates.clearVideo()
+						this.renderTemplates.clearInterface()
+						this.activeCall = null
+						return
+					}
 					this.renderTemplates.endedCall(call)
 					setTimeout(() => {
 						this.renderTemplates.clearVideo()
@@ -562,7 +588,7 @@ class BastyonCalls extends EventEmitter {
 		});
 		call.on("error", function(err){
 			this.renderTemplates.clearVideo()
-			console.log('Ошибка в звонке',err)
+			console.log('some error',err)
 			this.lastError = err.message;
 			call.hangup('error');
 
@@ -572,7 +598,6 @@ class BastyonCalls extends EventEmitter {
 
 
 	getAvatar() {
-		console.log('avatar',this)
 		if(this.activeCall.initiator?.source?.image){
 			return `<img src="${this.activeCall.initiator.source.image}"/>`
 		}
