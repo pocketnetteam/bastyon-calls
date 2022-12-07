@@ -454,14 +454,30 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 
   &-call-info
     display: flex
-    flex-direction: column
-    .time
-
-    .name
-      width: 200px
+    align-items: center
+    .avatar
+      display: flex
+      width: 40px
+      height: 40px
+      border-radius: 50%
       overflow: hidden
-      text-overflow: ellipsis
-      transition: width .3s ease
-      @media (pointer: fine)
-        &:hover
-          width: 400px
+      justify-content: center
+      align-items: center
+      font-size: 1.6em
+      color: rgba(var(--background-hidden-layer, .1))
+      background: rgb(var(--neutral-grad-0))
+      img
+        height: 100%
+    .info
+      margin-left: 10px
+      display: flex
+      flex-direction: column
+      .name
+        font-weight: 700
+        width: 200px
+        overflow: hidden
+        text-overflow: ellipsis
+        transition: width .3s ease
+        @media (pointer: fine)
+          &:hover
+            width: 400px

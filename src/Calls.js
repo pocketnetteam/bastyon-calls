@@ -24,7 +24,8 @@ class BastyonCalls extends EventEmitter {
 	syncInterval = null
 	isWaitingForConnect = false
 	signal = null
-
+	timer = null
+	timeInterval = null
 	templates = {
 		incomingCall : function(){
 			return `
@@ -60,8 +61,13 @@ class BastyonCalls extends EventEmitter {
 			return `
 			<div class="bc-topnav">
 				<div class="bc-call-info">
-					<div class="time" id="time">12:02</div>
-					<div class="name">${this.activeCall.initiator.source.name}</div>
+					<div class="avatar">
+						${this.getAvatar()}
+					</div>
+					<div class="info">
+						<div class="name">${this.activeCall.initiator.source.name}</div>
+						<div class="time" id="time">0:00</div>
+					</div>
 				</div>
 				<div class="options">
 					<button class="bc-btn bc-cog" id="bc-cog"><i class="fas fa-cog"></i></button>
@@ -145,8 +151,6 @@ class BastyonCalls extends EventEmitter {
 
 
 	initEvents(){
-
-
 		this.client.on("Call.incoming", async (call) => {
 			this.emit('initcall')
 			let members = this.client.store.rooms[ call.roomId ].currentState.members
@@ -185,6 +189,21 @@ class BastyonCalls extends EventEmitter {
 
 	initSignals() {
 		this.signal = new Audio()
+	}
+	clearTimer() {
+		this.timer = null
+		clearInterval(this.timeInterval)
+		this.timeInterval = null
+	}
+	initTimer() {
+		this.timer = 0
+		let el = document.getElementById('time')
+		this.timeInterval = setInterval((function (){
+			this.timer++
+			let m = Math.floor(this.timer/60)
+			let s = this.timer % 60
+			el.innerHTML = `${m}:${ s>=10 ? s : '0'+s}`
+		}).bind(this), 1000)
 	}
 	answer(){
 		try {
@@ -422,8 +441,8 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	async initCall(roomId){
-		console.log(this)
 		this.emit('initcall')
+
 		if (this.activeCall && this?.activeCall?.roomId === roomId) {
 			console.log('Call is already init', this)
 			return
@@ -450,13 +469,16 @@ class BastyonCalls extends EventEmitter {
 				this.renderTemplates.videoCall()
 			}).catch(e => console.log('get user info error',e))
 		}).bind(this))
+
 		this.addCallListeners(call)
+
 		if (!this.activeCall) {
 			this.activeCall = call
 		} else {
 			console.log('You have active call')
 			return
 		}
+
 		let a = new Audio('js/lib')
 		a.autoplay = true
 		a.loop = true
@@ -545,13 +567,17 @@ class BastyonCalls extends EventEmitter {
 			console.log('state', a)
 			if (a === 'connected') {
 				this.showRemoteVideo()
+				if (!this.timeInterval) {
+					this.initTimer()
+				}
 				this.signal.pause()
 				console.log('connected',this.activeCall)
 				this.initsync()
 			}
 			if (a === 'ended') {
+				this.clearTimer()
 				clearInterval(this.syncInterval)
-				console.log('interval',this.syncInterval)
+				this.syncInterval = null
 				this.signal.pause()
 			}
 		})
@@ -559,10 +585,7 @@ class BastyonCalls extends EventEmitter {
 
 			clearInterval(this.syncInterval)
 			this.syncInterval = null
-			console.log('interval',this.syncInterval)
 			console.log('Call ended',call)
-			console.log('status',this)
-
 			if (!call) {
 				this.renderTemplates.clearNotify()
 			}
