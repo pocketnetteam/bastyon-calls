@@ -2,6 +2,7 @@ import {EventEmitter} from 'events';
 import "./scss/index.sass";
 import {logPlugin} from "@babel/preset-env/lib/debug";
 
+
 class BastyonCalls extends EventEmitter {
 
 	constructor(client, matrixcs, root, options){
@@ -9,6 +10,7 @@ class BastyonCalls extends EventEmitter {
 		this.client = client;
 		this.matrixcs = matrixcs;
 		this.initEvents()
+		this.initSignals()
 		this.initTemplates(root)
 		this.options = options
 	}
@@ -21,6 +23,7 @@ class BastyonCalls extends EventEmitter {
 	secondCall = null
 	syncInterval = null
 	isWaitingForConnect = false
+	signal = null
 
 	templates = {
 		incomingCall : function(){
@@ -64,7 +67,7 @@ class BastyonCalls extends EventEmitter {
 					<button class="bc-btn bc-cog" id="bc-cog"><i class="fas fa-cog"></i></button>
 					<button class="bc-btn bc-pip" id="bc-pip"><i class="fas fa-images"></i></button>
 					<button class="bc-btn bc-format" id="bc-format"><i class="fas"></i></button>
-				</div>	
+				</div>
 			</div>
 			<div class="bc-video-container">
 				<div class="bc-video active novid" id="remote-scene">
@@ -97,7 +100,6 @@ class BastyonCalls extends EventEmitter {
 			this.initCallInterface('videoCall')
 		},
 		incomingCall: (call) => {
-			this.root.classList.remove('middle')
 			this.notify.innerHTML = this.templates['incomingCall']?.call(this) || ''
 			this.initCallInterface('incomingCall', call)
 		},
@@ -144,7 +146,9 @@ class BastyonCalls extends EventEmitter {
 
 	initEvents(){
 
+
 		this.client.on("Call.incoming", async (call) => {
+			this.emit('initcall')
 			let members = this.client.store.rooms[ call.roomId ].currentState.members
 			let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
 			let initiator = members[ initiatorId ]
@@ -152,10 +156,7 @@ class BastyonCalls extends EventEmitter {
 
 			call.initiator = initiator
 			call.user = user
-			console.log('перед', initiator)
 			this.options.getUserInfo(initiator.userId).then((res) => {
-				console.log('res', res)
-
 				 initiator.source = res[0] || res
 				 this.addCallListeners(call)
 				 if (!this.activeCall) {
@@ -166,7 +167,14 @@ class BastyonCalls extends EventEmitter {
 				 } else {
 					 call.reject('занято')
 				 }
+				let a = new Audio('js/lib')
+				a.autoplay = true
+				a.loop = true
+
+				this.signal = a
 				this.renderTemplates.incomingCall(call)
+				this.signal.src='sounds/incoming.mp3'
+				console.log(this.signal)
 			 })
 
 
@@ -175,11 +183,15 @@ class BastyonCalls extends EventEmitter {
 
 	}
 
+	initSignals() {
+		this.signal = new Audio()
+	}
 	answer(){
 		try {
 			if (this.activeCall.state === "ringing") {
 				this.activeCall.answer()
 				console.log('Ответ на',this.activeCall)
+				this.signal.pause()
 				this.renderTemplates.clearNotify()
 				this.renderTemplates.videoCall()
 			} else {
@@ -190,10 +202,12 @@ class BastyonCalls extends EventEmitter {
 					try {
 						console.log('Сброс + ответ на', this.activeCall)
 						this.activeCall.answer()
+						this.signal.pause()
 						this.isWaitingForConnect = false
 						this.renderTemplates.videoCall()
 					} catch (e) {
 						console.log("Ошибка при ответе на вторую линию", e)
+						this.signal.pause()
 					}
 				}, 1000)
 			}
@@ -203,6 +217,7 @@ class BastyonCalls extends EventEmitter {
 			// this.renderTemplates.clearVideo()
 			// this.renderTemplates.clearInterface()
 			console.log('error answer',e)
+			this.signal.pause()
 		}
 	}
 
@@ -407,48 +422,45 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	async initCall(roomId){
-		console.log('init call')
-		try {
-			const constraints = {
-				video : true
-			}
-			let stream = await navigator.mediaDevices.getUserMedia(constraints)
-			console.log('media checked')
-		} catch (e) {
-			console.log('media error',e)
+		console.log(this)
+		this.emit('initcall')
+		if (this.activeCall && this?.activeCall?.roomId === roomId) {
+			console.log('Call is already init', this)
+			return
 		}
 
-
-
 		const call = matrixcs.createNewMatrixCall(this.client, roomId)
+
+		call.placeVideoCall(document.getElementById("remote"),document.getElementById("local")).then( (async function() {
+			let members = this.client.store.rooms[ call.roomId ].currentState.members
+			let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
+			let initiator = members[ initiatorId ]
+			let user = members[this.client.credentials.userId]
+
+			call.initiator = initiator
+			call.user = user
+
+			initiator.source = await this.options.getUserInfo(initiator.userId)[0]
+			this.options.getUserInfo(initiator.userId).then((res) => {
+				console.log(res)
+				initiator.source = res[0] || res
+
+
+				this.signal.src='sounds/calling.mp3'
+				this.renderTemplates.videoCall()
+			}).catch(e => console.log('get user info error',e))
+		}).bind(this))
+		this.addCallListeners(call)
 		if (!this.activeCall) {
 			this.activeCall = call
 		} else {
 			console.log('You have active call')
 			return
 		}
-		call.placeVideoCall(document.getElementById("remote"),document.getElementById("local"))
-
-		let members = this.client.store.rooms[ call.roomId ].currentState.members
-		let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
-		let initiator = members[ initiatorId ]
-		let user = members[this.client.credentials.userId]
-
-		call.initiator = initiator
-		call.user = user
-
-		initiator.source = await this.options.getUserInfo(initiator.userId)[0]
-		console.log(initiator)
-		this.options.getUserInfo(initiator.userId).then((res) => {
-			console.log(res)
-			initiator.source = res[0] || res
-
-			this.addCallListeners(call)
-
-			this.renderTemplates.videoCall()
-		}).catch(e => console.log('get user info error',e))
-
-
+		let a = new Audio('js/lib')
+		a.autoplay = true
+		a.loop = true
+		this.signal = a
 
 		return call
 	}
@@ -470,10 +482,12 @@ class BastyonCalls extends EventEmitter {
 		this.activeCall.hangup('ended', false)
 		this.renderTemplates.clearVideo()
 		console.log('hangup')
+		this.signal.pause()
 	}
 
 	reject(call){
 		call.reject()
+		this.signal.pause()
 	}
 
 	// changeView(event){
@@ -531,19 +545,23 @@ class BastyonCalls extends EventEmitter {
 			console.log('state', a)
 			if (a === 'connected') {
 				this.showRemoteVideo()
+				this.signal.pause()
 				console.log('connected',this.activeCall)
 				this.initsync()
 			}
 			if (a === 'ended') {
 				clearInterval(this.syncInterval)
 				console.log('interval',this.syncInterval)
+				this.signal.pause()
 			}
 		})
 		call.on("hangup", (call) => {
 
 			clearInterval(this.syncInterval)
+			this.syncInterval = null
 			console.log('interval',this.syncInterval)
-			console.log('Call ended',this)
+			console.log('Call ended',call)
+			console.log('status',this)
 
 			if (!call) {
 				this.renderTemplates.clearNotify()
@@ -555,7 +573,7 @@ class BastyonCalls extends EventEmitter {
 			}
 			if (call.callId === this.activeCall?.callId) {
 
-				console.log('first line ended', call)
+				console.log('first line ended', this)
 
 				if(this.isWaitingForConnect) {
 					this.activeCall = this.secondCall
@@ -573,25 +591,33 @@ class BastyonCalls extends EventEmitter {
 						return
 					}
 					this.renderTemplates.endedCall(call)
+					if (call.hangupReason = "user_hangup" && !call.remoteStream && call.hangupParty !== 'local') {
+						console.log('Занят', this.signal)
+						this.signal.loop = false
+						this.signal.src = 'sounds/busy.mp3'
+					}
 					setTimeout(() => {
 						this.renderTemplates.clearVideo()
 						this.renderTemplates.clearInterface()
 						this.activeCall = null
-					}, 2000)
+						console.log(this.activeCall)
+					}, 3000)
 					return
 				}
+				this.signal.pause()
 				this.renderTemplates.clearInterface()
 
 			}
 
 
 		});
-		call.on("error", function(err){
-			this.renderTemplates.clearVideo()
+		call.on("error", (err) => {
+			console.log('s',this)
 			console.log('some error',err)
 			this.lastError = err.message;
 			call.hangup('error');
-
+			this.signal.pause()
+			this.renderTemplates.clearVideo()
 			this.emit('error', err)
 		});
 	}
