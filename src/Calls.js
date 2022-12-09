@@ -72,7 +72,7 @@ class BastyonCalls extends EventEmitter {
 				</div>
 				<div class="options">
 					<button class="bc-btn bc-cog" id="bc-cog"><i class="fas fa-cog"></i></button>
-					<button class="bc-btn bc-pip" id="bc-pip"><i class="fas fa-images"></i></button>
+					<button class="bc-btn bc-pip" id="bc-pip"><i class="fas fa-minus"></i></button>
 					<button class="bc-btn bc-format" id="bc-format"><i class="fas"></i></button>
 				</div>
 			</div>

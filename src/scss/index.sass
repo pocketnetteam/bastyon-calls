@@ -369,16 +369,17 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 
     &.minified
       margin: 0
-      border-radius: 10%
+      border-radius: 120px
       z-index: 33333333
       position: fixed
       right: 30px
-      bottom: 15%
+      bottom: 10%
       overflow: hidden
       video
         transform: scale(-1, 1)
-        height: 15vw
+        height: 15vh
         width: auto
+        max-height: 150px
       @media screen and (orientation : portrait)
         video
           height: 15vh
