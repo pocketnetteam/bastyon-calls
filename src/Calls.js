@@ -153,10 +153,6 @@ class BastyonCalls extends EventEmitter {
 	initEvents(){
 		this.client.on("Call.incoming", async (call) => {
 			console.log('incoming', call, call.hangupParty, call.hangupReason)
-			// if(call.hangupParty || call.hangupReason) {
-			// 	console.log('bad____________')
-			// 	return
-			// }
 			this.title = document.querySelector('title').innerHTML
 			document.querySelector('title').innerHTML = this.options.getWithLocale('incomingCall')
 			this.emit('initcall____________')
@@ -446,13 +442,18 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	async initCall(roomId){
-		this.emit('initcall')
+
 
 		if (this.activeCall && this?.activeCall?.roomId === roomId) {
-			console.log('Call is already init', this)
+			if (this.activeCall.state === "ringing") {
+				this.answer()
+			}
+			if (this.activeCall.state === "ended") {
+				this.activeCall = null
+			}
 			return
 		}
-
+		this.emit('initcall')
 		const call = matrixcs.createNewMatrixCall(this.client, roomId)
 
 		call.placeVideoCall(document.getElementById("remote"),document.getElementById("local")).then( (async function() {
@@ -631,7 +632,7 @@ class BastyonCalls extends EventEmitter {
 						this.renderTemplates.clearVideo()
 						this.renderTemplates.clearInterface()
 						this.activeCall = null
-						console.log(this.activeCall)
+						console.log('time out',this.activeCall)
 					}, 3000)
 					return
 				}
