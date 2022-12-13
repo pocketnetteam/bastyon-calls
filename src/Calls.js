@@ -229,7 +229,7 @@ class BastyonCalls extends EventEmitter {
 						this.isWaitingForConnect = false
 						this.renderTemplates.videoCall()
 					} catch (e) {
-						console.log("Ошибка при ответе на вторую линию", e)
+						console.error("Ошибка при ответе на вторую линию", e)
 						this.signal.pause()
 					}
 				}, 1000)
@@ -239,7 +239,7 @@ class BastyonCalls extends EventEmitter {
 			// this.renderTemplates.clearNotify()
 			// this.renderTemplates.clearVideo()
 			// this.renderTemplates.clearInterface()
-			console.log('error answer',e)
+			console.error('error answer',e)
 			this.signal.pause()
 		}
 	}
@@ -411,7 +411,6 @@ class BastyonCalls extends EventEmitter {
 				console.log( "Check: " + error.message);
 			})
 		} catch (e) {
-
 			console.log('sa',e)
 		}
 
@@ -446,6 +445,7 @@ class BastyonCalls extends EventEmitter {
 
 		if (this.activeCall && this?.activeCall?.roomId === roomId) {
 			if (this.activeCall.state === "ringing") {
+				debugger
 				this.answer()
 			}
 			if (this.activeCall.state === "ended") {
@@ -467,7 +467,6 @@ class BastyonCalls extends EventEmitter {
 
 			initiator.source = await this.options.getUserInfo(initiator.userId)[0]
 			this.options.getUserInfo(initiator.userId).then((res) => {
-				console.log(res)
 				initiator.source = res[0] || res
 
 
@@ -481,7 +480,7 @@ class BastyonCalls extends EventEmitter {
 		if (!this.activeCall) {
 			this.activeCall = call
 		} else {
-			console.log('You have active call')
+			console.log('You have active call',this.activeCall)
 			return
 		}
 
@@ -571,14 +570,13 @@ class BastyonCalls extends EventEmitter {
 	addCallListeners(call){
 
 		call.on('state', (a,b) => {
-			console.log('state', a)
 			if (a === 'connected') {
 				this.showRemoteVideo()
 				if (!this.timeInterval) {
 					this.initTimer()
 				}
 				this.signal.pause()
-				console.log('connected',this.activeCall)
+				console.log('connected',this)
 				document.querySelector('title').innerHTML = this.title
 				this.initsync()
 			}
@@ -644,9 +642,7 @@ class BastyonCalls extends EventEmitter {
 
 		});
 		call.on("error", (err) => {
-			console.log('s',this)
-			console.log('some error',err)
-			this.lastError = err.message;
+			console.error('some error',err, this)
 			call.hangup('error');
 			this.signal.pause()
 			this.renderTemplates.clearVideo()
