@@ -1,5 +1,6 @@
 import {EventEmitter} from 'events';
 import "./scss/index.sass";
+import {logPlugin} from "@babel/preset-env/lib/debug";
 
 
 class BastyonCalls extends EventEmitter {
@@ -444,9 +445,10 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	async initCall(roomId){
-
-
+		console.log('init call', this, roomId )
 		if (this.activeCall && this?.activeCall?.roomId === roomId) {
+
+			console.log('same room call',this)
 			if (this.activeCall.state === "ringing") {
 				console.log('has active, with ringing')
 				this.answer()
