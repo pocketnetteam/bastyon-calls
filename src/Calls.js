@@ -1,6 +1,5 @@
 import {EventEmitter} from 'events';
 import "./scss/index.sass";
-import {logPlugin} from "@babel/preset-env/lib/debug";
 
 
 class BastyonCalls extends EventEmitter {
@@ -152,10 +151,10 @@ class BastyonCalls extends EventEmitter {
 
 	initEvents(){
 		this.client.on("Call.incoming", async (call) => {
-			console.log('incoming', call, call.hangupParty, call.hangupReason)
+
 			this.title = document.querySelector('title').innerHTML
 			document.querySelector('title').innerHTML = this.options.getWithLocale('incomingCall')
-			this.emit('initcall____________')
+			this.emit('initcall')
 
 			let members = this.client.store.rooms[ call.roomId ].currentState.members
 			let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
@@ -165,6 +164,9 @@ class BastyonCalls extends EventEmitter {
 			call.initiator = initiator
 			call.user = user
 			this.options.getUserInfo(initiator.userId).then((res) => {
+				if (call.hangupParty || call.hangupReason) {
+					return
+				}
 				 initiator.source = res[0] || res
 				 this.addCallListeners(call)
 				 if (!this.activeCall) {
@@ -175,6 +177,7 @@ class BastyonCalls extends EventEmitter {
 				 } else {
 					 call.hangup('busy')
 					 call.reject('busy')
+					 console.log('all calls', this)
 				 }
 				let a = new Audio('js/lib')
 				a.autoplay = true
@@ -445,10 +448,11 @@ class BastyonCalls extends EventEmitter {
 
 		if (this.activeCall && this?.activeCall?.roomId === roomId) {
 			if (this.activeCall.state === "ringing") {
-				debugger
+				console.log('has active, with ringing')
 				this.answer()
 			}
 			if (this.activeCall.state === "ended") {
+				console.log('has active, with ended')
 				this.activeCall = null
 			}
 			return
@@ -506,15 +510,16 @@ class BastyonCalls extends EventEmitter {
 
 	hangup(e){
 		e.stopPropagation()
+		console.log('hangup', this.activeCall)
 		this.activeCall.hangup('ended', false)
 		this.renderTemplates.clearVideo()
-		console.log('hangup')
+
 		this.signal.pause()
 	}
 
 	reject(call){
-		call.hangup()
 		call.reject('busy')
+		// call.hangup()
 		this.signal.pause()
 	}
 
