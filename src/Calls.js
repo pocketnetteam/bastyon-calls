@@ -1,7 +1,5 @@
 import {EventEmitter} from 'events';
 import "./scss/index.sass";
-import {logPlugin} from "@babel/preset-env/lib/debug";
-
 
 class BastyonCalls extends EventEmitter {
 
@@ -463,7 +461,15 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	initCall(roomId){
-		console.log('init call')
+		if (this?.activeCall?.roomId === roomId) {
+			console.log('only one call in room')
+			if (this?.activeCall?.state === "ringing") {
+				console.log('answer to incoming from same room')
+				this.answer()
+			}
+			return
+		}
+
 		this.emit('initcall')
 		const call = matrixcs.createNewMatrixCall(this.client, roomId)
 
@@ -656,7 +662,7 @@ class BastyonCalls extends EventEmitter {
 			console.log('replaced',call)
 			console.log('old',this.activeCall)
 			this.activeCall = null
-
+			this.signal.pause()
 			let members = this.client.store.rooms[ call.roomId ].currentState.members
 			let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
 			let initiator = members[ initiatorId ]
@@ -689,6 +695,7 @@ class BastyonCalls extends EventEmitter {
 					setTimeout((function(){this.answer()}).bind(this), 1000)
 				} else {
 					this.answer()
+					this.showRemoteVideo()
 				}
 
 			})
