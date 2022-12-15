@@ -153,10 +153,21 @@ class BastyonCalls extends EventEmitter {
 	initEvents(){
 		this.client.on("Call.incoming", async (call) => {
 
-
+			console.log('incoming call')
 			// console.log('init call', this.activeCall, call)
-
-
+			// if (this.activeCall && this?.activeCall?.roomId === roomId) {
+			//
+			// 	console.log('same room call',this)
+			// 	if (this.activeCall.state === "ringing") {
+			// 		console.log('has active, with ringing')
+			// 		this.answer()
+			// 	}
+			// 	if (this.activeCall.state === "ended") {
+			// 		console.log('has active, with ended')
+			// 		this.activeCall = null
+			// 	}
+			// 	return
+			// }
 
 			this.title = document.querySelector('title').innerHTML
 			document.querySelector('title').innerHTML = this.options.getWithLocale('incomingCall')
@@ -219,10 +230,12 @@ class BastyonCalls extends EventEmitter {
 		}).bind(this), 1000)
 	}
 	answer(){
+		console.log('state on answer', this.activeCall.state)
 		try {
-			if (this.activeCall.state === "ringing") {
+			console.log()
+			if (this.activeCall.state !== "connected" || this.activeCall.state !== "ended") {
 				this.activeCall.answer()
-				// console.log('Ответ на',this.activeCall)
+				console.log('Ответ на',this.activeCall)
 				this.signal.pause()
 				this.renderTemplates.clearNotify()
 				this.renderTemplates.videoCall()
@@ -232,7 +245,7 @@ class BastyonCalls extends EventEmitter {
 				this.activeCall.hangup()
 				setTimeout(()=> {
 					try {
-						// console.log('Сброс + ответ на', this.activeCall)
+						console.log('Сброс + ответ на', this.activeCall)
 						this.activeCall.answer()
 						this.signal.pause()
 						this.isWaitingForConnect = false
@@ -450,6 +463,7 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	initCall(roomId){
+		console.log('init call')
 		this.emit('initcall')
 		const call = matrixcs.createNewMatrixCall(this.client, roomId)
 
@@ -565,6 +579,7 @@ class BastyonCalls extends EventEmitter {
 	addCallListeners(call){
 
 		call.on('state', (a,b) => {
+			console.log('state',a, call)
 			if (a === 'connected') {
 				this.showRemoteVideo()
 				if (!this.timeInterval) {
@@ -585,6 +600,7 @@ class BastyonCalls extends EventEmitter {
 		})
 		call.on("hangup", (call) => {
 
+			console.log('hangup', call)
 			clearInterval(this.syncInterval)
 			this.syncInterval = null
 			// console.log('Call ended',call)
@@ -636,6 +652,41 @@ class BastyonCalls extends EventEmitter {
 
 
 		});
+		call.on("replaced", (call) => {
+			console.log('replaced',call)
+			console.log('old',this.activeCall)
+			this.activeCall = null
+
+			let members = this.client.store.rooms[ call.roomId ].currentState.members
+			let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
+			let initiator = members[ initiatorId ]
+			let user = members[this.client.credentials.userId]
+
+			call.initiator = initiator
+			call.user = user
+			console.log('call',call)
+			this.options.getUserInfo(initiator.userId).then((res) => {
+				if (call.hangupParty || call.hangupReason) {
+					return
+				}
+				initiator.source = res[0] || res
+				this.addCallListeners(call)
+				console.log('listen added',this ,call)
+				if (!this.activeCall) {
+					this.activeCall = call
+					console.log('now active', this.activeCall )
+				} else if(!this.secondCall){
+					this.secondCall = call
+					// console.log('nwe call in queue', call)
+				} else {
+					call.hangup('busy')
+					call.reject('busy')
+					// console.log('all calls', this)
+				}
+				this.answer()
+			})
+
+		})
 		call.on("error", (err) => {
 			console.error('some error',err, this)
 			call.hangup('error');
