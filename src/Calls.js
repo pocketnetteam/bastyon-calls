@@ -523,7 +523,7 @@ class BastyonCalls extends EventEmitter {
 
 	reject(call){
 		call.reject('busy')
-		// call.hangup()
+		call.hangup()
 		this.signal.pause()
 	}
 
@@ -664,7 +664,6 @@ class BastyonCalls extends EventEmitter {
 
 			call.initiator = initiator
 			call.user = user
-			console.log('call',call)
 			this.options.getUserInfo(initiator.userId).then((res) => {
 				if (call.hangupParty || call.hangupReason) {
 					return
@@ -677,13 +676,21 @@ class BastyonCalls extends EventEmitter {
 					console.log('now active', this.activeCall )
 				} else if(!this.secondCall){
 					this.secondCall = call
+					console.log('now second', this.secondCall )
 					// console.log('nwe call in queue', call)
 				} else {
+					console.log('all lines')
 					call.hangup('busy')
 					call.reject('busy')
 					// console.log('all calls', this)
 				}
-				this.answer()
+				if(call.state === 'wait_local_media') {
+					console.log('wait media!')
+					setTimeout((function(){this.answer()}).bind(this), 1000)
+				} else {
+					this.answer()
+				}
+
 			})
 
 		})
