@@ -153,6 +153,23 @@ class BastyonCalls extends EventEmitter {
 	initEvents(){
 		this.client.on("Call.incoming", async (call) => {
 
+
+			console.log('init call', this.activeCall , roomId)
+			if (this.activeCall && this?.activeCall?.roomId === roomId) {
+
+				console.log('same room call',this)
+				if (this.activeCall.state === "ringing") {
+					console.log('has active, with ringing')
+					this.answer()
+				}
+				if (this.activeCall.state === "ended") {
+					console.log('has active, with ended')
+					this.activeCall = null
+				}
+				return
+			}
+
+
 			this.title = document.querySelector('title').innerHTML
 			document.querySelector('title').innerHTML = this.options.getWithLocale('incomingCall')
 			this.emit('initcall')
@@ -444,21 +461,7 @@ class BastyonCalls extends EventEmitter {
 		}
 	}
 
-	async initCall(roomId){
-		console.log('init call', this, roomId )
-		if (this.activeCall && this?.activeCall?.roomId === roomId) {
-
-			console.log('same room call',this)
-			if (this.activeCall.state === "ringing") {
-				console.log('has active, with ringing')
-				this.answer()
-			}
-			if (this.activeCall.state === "ended") {
-				console.log('has active, with ended')
-				this.activeCall = null
-			}
-			return
-		}
+	initCall(roomId){
 		this.emit('initcall')
 		const call = matrixcs.createNewMatrixCall(this.client, roomId)
 
@@ -474,15 +477,12 @@ class BastyonCalls extends EventEmitter {
 			initiator.source = await this.options.getUserInfo(initiator.userId)[0]
 			this.options.getUserInfo(initiator.userId).then((res) => {
 				initiator.source = res[0] || res
-
-
 				this.signal.src='sounds/calling.mp3'
 				this.renderTemplates.videoCall()
 			}).catch(e => console.log('get user info error',e))
 		}).bind(this))
-
 		this.addCallListeners(call)
-
+		console.log('after init',this.activeCall)
 		if (!this.activeCall) {
 			this.activeCall = call
 		} else {
