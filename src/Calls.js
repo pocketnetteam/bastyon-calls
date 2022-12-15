@@ -100,7 +100,7 @@ class BastyonCalls extends EventEmitter {
 	renderTemplates = {
 
 		videoCall : () => {
-			console.log('videoCall')
+			// console.log('videoCall')
 			this.root.classList.add('middle')
 			// this.root.classList.add('active')
 			this.root.innerHTML = this.templates['videoCall']?.call(this) || ''
@@ -111,15 +111,15 @@ class BastyonCalls extends EventEmitter {
 			this.initCallInterface('incomingCall', call)
 		},
 		clearNotify : () => {
-			console.log('clearNotify')
+			// console.log('clearNotify')
 			this.notify.innerHTML = ''
 		},
 		clearVideo : () => {
-			console.log('clearVideo')
+			// console.log('clearVideo')
 			this.root.innerHTML = ''
 		},
 		clearInterface : () => {
-			console.log('clearInterface')
+			// console.log('clearInterface')
 			this.root.classList.remove('active')
 			this.root.classList.remove('minified')
 			this.root.classList.remove('middle')
@@ -136,7 +136,7 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	initTemplates(outerRoot){
-		console.log(outerRoot)
+		// console.log(outerRoot)
 		outerRoot.insertAdjacentHTML('beforeend', `<div class="bc-container"><div id="bc-notify" class="bc-notify"></div><div id="bc-root"></div></div>`);
 		this.root = document.getElementById('bc-root')
 		this.notify = document.getElementById('bc-notify')
@@ -154,20 +154,8 @@ class BastyonCalls extends EventEmitter {
 		this.client.on("Call.incoming", async (call) => {
 
 
-			console.log('init call', this.activeCall , roomId)
-			if (this.activeCall && this?.activeCall?.roomId === roomId) {
+			// console.log('init call', this.activeCall, call)
 
-				console.log('same room call',this)
-				if (this.activeCall.state === "ringing") {
-					console.log('has active, with ringing')
-					this.answer()
-				}
-				if (this.activeCall.state === "ended") {
-					console.log('has active, with ended')
-					this.activeCall = null
-				}
-				return
-			}
 
 
 			this.title = document.querySelector('title').innerHTML
@@ -191,11 +179,11 @@ class BastyonCalls extends EventEmitter {
 					 this.activeCall = call
 				 } else if(!this.secondCall){
 					 this.secondCall = call
-					 console.log('nwe call in queue', call)
+					 // console.log('nwe call in queue', call)
 				 } else {
 					 call.hangup('busy')
 					 call.reject('busy')
-					 console.log('all calls', this)
+					 // console.log('all calls', this)
 				 }
 				let a = new Audio('js/lib')
 				a.autoplay = true
@@ -234,7 +222,7 @@ class BastyonCalls extends EventEmitter {
 		try {
 			if (this.activeCall.state === "ringing") {
 				this.activeCall.answer()
-				console.log('Ответ на',this.activeCall)
+				// console.log('Ответ на',this.activeCall)
 				this.signal.pause()
 				this.renderTemplates.clearNotify()
 				this.renderTemplates.videoCall()
@@ -244,7 +232,7 @@ class BastyonCalls extends EventEmitter {
 				this.activeCall.hangup()
 				setTimeout(()=> {
 					try {
-						console.log('Сброс + ответ на', this.activeCall)
+						// console.log('Сброс + ответ на', this.activeCall)
 						this.activeCall.answer()
 						this.signal.pause()
 						this.isWaitingForConnect = false
@@ -272,7 +260,7 @@ class BastyonCalls extends EventEmitter {
 				return r[1].type === 'candidate-pair'
 			})
 			filtered.forEach(c => {
-				console.log(stats.get(c.selectedCandidatePairId))
+				// console.log(stats.get(c.selectedCandidatePairId))
 			})
 		})
 		this.syncInterval = setInterval((function(){
@@ -320,7 +308,7 @@ class BastyonCalls extends EventEmitter {
 		}
 		sender.track.enabled = !sender.track.enabled
 
-		console.log('mute',this.activeCall.peerConn.getSenders())
+		// console.log('mute',this.activeCall.peerConn.getSenders())
 	}
 
 	hide(e){
@@ -342,18 +330,18 @@ class BastyonCalls extends EventEmitter {
 
 		sender.track.enabled = !sender.track.enabled
 
-		console.log('hide',this.activeCall.peerConn.getSenders(), this.activeCall.peerConn.getReceivers())
-		console.log('remote tracks',this.activeCall.remoteStream.getTracks())
+		// console.log('hide',this.activeCall.peerConn.getSenders(), this.activeCall.peerConn.getReceivers())
+		// console.log('remote tracks',this.activeCall.remoteStream.getTracks())
 
 	}
 
 	cameraCount() {
 		navigator.mediaDevices.enumerateDevices().then((devices) => {
 			let cameras = devices.filter(d => d.kind === 'videoinput')
-			console.log(cameras)
+			// console.log(cameras)
 			if(cameras.length <= 1){
 				document.getElementById("bc-camera").style.display = 'none'
-				console.log('no cameras')
+				// console.log('no cameras')
 			}
 		})
 	}
@@ -366,27 +354,27 @@ class BastyonCalls extends EventEmitter {
 				let video = dev.filter(d => d.kind === 'videoinput')
 				let target
 				const senders = self.activeCall.peerConn.getSenders()
-				console.log('senders', senders)
+				// console.log('senders', senders)
 				let sender = senders.find((s) => {
 					return s.track.kind == 'video';
 				})
-				console.log('sender', sender)
+				// console.log('sender', sender)
 
 				if (sender && sender?.label?.includes('front' || 'передней')){
-					console.log('Front camera is active')
+					// console.log('Front camera is active')
 					self.isFrontalCamera = true
 				}
-				console.log('video list', video)
+				// console.log('video list', video)
 
 				if (video.length > 1) {
 
 					if (sender.track.label.includes('front') || sender.track.label.includes('передней')) {
-						console.log('to back')
+						// console.log('to back')
 						target = video.reverse().find((device) => {
 							return device.label.includes('back') || device.label.includes('задней')
 						})
 					} else {
-						console.log('to front')
+						// console.log('to front')
 						target = video.find((device) => {
 							return device.label.includes('front') || device.label.includes('передней')
 						})
@@ -405,17 +393,17 @@ class BastyonCalls extends EventEmitter {
 				  .getUserMedia(constraints)
 				  .then(stream => {
 					  stream.getTracks().forEach(function(track) {
-						  console.log('track', track)
+						  // console.log('track', track)
 						  const sender = self.activeCall.peerConn.getSenders().find((s) => {
 							  return s.track.kind == track.kind;
 						  })
-						  console.log('current stream ', sender)
+						  // console.log('current stream ', sender)
 						  if (sender.track.label === track.label) {
-							  console.log('same streams on change')
+							  // console.log('same streams on change')
 							  return
 						  }
 						  if (track.muted) {
-							  console.log('track is unable', track)
+							  // console.log('track is unable', track)
 						  }
 						  sender.replaceTrack(track);
 						  self.videoStreams.local.srcObject = stream
@@ -424,15 +412,15 @@ class BastyonCalls extends EventEmitter {
 					  this.hide()
 				  }).catch(function(error) {
 
-					console.log("Const stream: " + error.message);
+					// console.log("Const stream: " + error.message);
 				})
 
 			}).catch(function(error) {
 
-				console.log( "Check: " + error.message);
+				// console.log( "Check: " + error.message);
 			})
 		} catch (e) {
-			console.log('sa',e)
+			// console.log('sa',e)
 		}
 
 	}
@@ -455,7 +443,7 @@ class BastyonCalls extends EventEmitter {
 			this.root.classList.add('minified')
 		} else {
 			clearInterval(this.syncInterval)
-			console.log('interval',this.syncInterval)
+			// console.log('interval',this.syncInterval)
 			this.root.classList.remove('minified')
 			this.root.classList.add('middle')
 		}
@@ -482,11 +470,11 @@ class BastyonCalls extends EventEmitter {
 			}).catch(e => console.log('get user info error',e))
 		}).bind(this))
 		this.addCallListeners(call)
-		console.log('after init',this.activeCall)
+		// console.log('after init',this.activeCall)
 		if (!this.activeCall) {
 			this.activeCall = call
 		} else {
-			console.log('You have active call',this.activeCall)
+			// console.log('You have active call',this.activeCall)
 			return
 		}
 
@@ -512,7 +500,7 @@ class BastyonCalls extends EventEmitter {
 
 	hangup(e){
 		e.stopPropagation()
-		console.log('hangup', this.activeCall)
+		// console.log('hangup', this.activeCall)
 		this.activeCall.hangup('ended', false)
 		this.renderTemplates.clearVideo()
 
@@ -545,14 +533,14 @@ class BastyonCalls extends EventEmitter {
 					local : document.getElementById("local")
 				}
 				try {
-					console.log('init call interface',this.activeCall)
+					// console.log('init call interface',this.activeCall)
 					this.activeCall.setLocalVideoElement(this.videoStreams.local)
 					this.activeCall.setRemoteVideoElement(this.videoStreams.remote)
 					this.cameraCount()
 					this.addVideoInterfaceListeners()
-					console.log('стримы',this.videoStreams)
+					// console.log('стримы',this.videoStreams)
 				} catch (e) {
-					console.log('init interface error',e)
+					// console.log('init interface error',e)
 				}
 				break;
 		}
@@ -583,7 +571,7 @@ class BastyonCalls extends EventEmitter {
 					this.initTimer()
 				}
 				this.signal.pause()
-				console.log('connected',this)
+				// console.log('connected',this)
 				document.querySelector('title').innerHTML = this.title
 				this.initsync()
 			}
@@ -599,23 +587,23 @@ class BastyonCalls extends EventEmitter {
 
 			clearInterval(this.syncInterval)
 			this.syncInterval = null
-			console.log('Call ended',call)
+			// console.log('Call ended',call)
 			if (!call) {
 				this.renderTemplates.clearNotify()
 			}
 			if (call.callId === this.secondCall?.callId) {
 				this.secondCall = null
 				this.renderTemplates.clearNotify()
-				console.log('second line ended', call)
+				// console.log('second line ended', call)
 			}
 			if (call.callId === this.activeCall?.callId) {
 
-				console.log('first line ended', this)
+				// console.log('first line ended', this)
 
 				if(this.isWaitingForConnect) {
 					this.activeCall = this.secondCall
 					this.secondCall = null
-					console.log('second line is active', this.activeCall)
+					// console.log('second line is active', this.activeCall)
 					return;
 				}
 				this.renderTemplates.clearVideo()
@@ -629,7 +617,7 @@ class BastyonCalls extends EventEmitter {
 					}
 					this.renderTemplates.endedCall(call)
 					if (call.hangupReason = "user_hangup" && !call.remoteStream && call.hangupParty !== 'local') {
-						console.log('busy', this.signal)
+						// console.log('busy', this.signal)
 						this.signal.loop = false
 						this.signal.src = 'sounds/busy.mp3'
 					}
@@ -637,7 +625,7 @@ class BastyonCalls extends EventEmitter {
 						this.renderTemplates.clearVideo()
 						this.renderTemplates.clearInterface()
 						this.activeCall = null
-						console.log('time out',this.activeCall)
+						// console.log('time out',this.activeCall)
 					}, 3000)
 					return
 				}
