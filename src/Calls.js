@@ -10,10 +10,11 @@ class BastyonCalls extends EventEmitter {
 		this.initEvents()
 		this.initSignals()
 		this.initTemplates(root)
+		this.initCordovaPermisions()
 		this.options = options
 	}
 
-	controls = {}
+	controls = null
 	isFrontalCamera = false
 	videoStreams = null
 	isMuted = false
@@ -139,7 +140,7 @@ class BastyonCalls extends EventEmitter {
 		this.root = document.getElementById('bc-root')
 		this.notify = document.getElementById('bc-notify')
 		if (window) {
-			window.onunload = () => {
+			window.onbeforeunload = () => {
 				if(this.activeCall) {
 					this.activeCall.hangup()
 				}
@@ -230,8 +231,7 @@ class BastyonCalls extends EventEmitter {
 	answer(){
 		console.log('state on answer', this.activeCall.state)
 		try {
-			console.log()
-			if (this.activeCall.state !== "connected" || this.activeCall.state !== "ended") {
+			if (this.activeCall.state !== "connected" && this.activeCall.state !== "ended") {
 				this.activeCall.answer()
 				console.log('Ответ на',this.activeCall)
 				this.signal.pause()
@@ -352,7 +352,7 @@ class BastyonCalls extends EventEmitter {
 			// console.log(cameras)
 			if(cameras.length <= 1){
 				document.getElementById("bc-camera").style.display = 'none'
-				// console.log('no cameras')
+				console.log('no cameras', cameras)
 			}
 		})
 	}
@@ -367,7 +367,7 @@ class BastyonCalls extends EventEmitter {
 				const senders = self.activeCall.peerConn.getSenders()
 				// console.log('senders', senders)
 				let sender = senders.find((s) => {
-					return s.track.kind == 'video';
+					return s.track.kind === 'video';
 				})
 				// console.log('sender', sender)
 
@@ -375,17 +375,17 @@ class BastyonCalls extends EventEmitter {
 					// console.log('Front camera is active')
 					self.isFrontalCamera = true
 				}
-				// console.log('video list', video)
+				console.log('video list', video)
 
 				if (video.length > 1) {
 
 					if (sender.track.label.includes('front') || sender.track.label.includes('передней')) {
-						// console.log('to back')
+						console.log('to back')
 						target = video.reverse().find((device) => {
 							return device.label.includes('back') || device.label.includes('задней')
 						})
 					} else {
-						// console.log('to front')
+						console.log('to front')
 						target = video.find((device) => {
 							return device.label.includes('front') || device.label.includes('передней')
 						})
@@ -410,7 +410,7 @@ class BastyonCalls extends EventEmitter {
 						  })
 						  // console.log('current stream ', sender)
 						  if (sender.track.label === track.label) {
-							  // console.log('same streams on change')
+							  console.log('same streams on change')
 							  return
 						  }
 						  if (track.muted) {
@@ -423,7 +423,7 @@ class BastyonCalls extends EventEmitter {
 					  this.hide()
 				  }).catch(function(error) {
 
-					// console.log("Const stream: " + error.message);
+					console.log("Const stream: " + error.message);
 				})
 
 			}).catch(function(error) {
@@ -529,7 +529,7 @@ class BastyonCalls extends EventEmitter {
 
 	reject(call){
 		call.reject('busy')
-		call.hangup()
+		// call.hangup()
 		this.signal.pause()
 	}
 
@@ -583,7 +583,6 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	addCallListeners(call){
-
 		call.on('state', (a,b) => {
 			console.log('state',a, call)
 			if (a === 'connected') {
@@ -638,7 +637,7 @@ class BastyonCalls extends EventEmitter {
 						return
 					}
 					this.renderTemplates.endedCall(call)
-					if (call.hangupReason = "user_hangup" && !call.remoteStream && call.hangupParty !== 'local') {
+					if (call.hangupReason === "user_hangup" && !call.remoteStream && call.hangupParty !== 'local') {
 						// console.log('busy', this.signal)
 						this.signal.loop = false
 						this.signal.src = 'sounds/busy.mp3'
@@ -708,6 +707,14 @@ class BastyonCalls extends EventEmitter {
 			this.renderTemplates.clearVideo()
 			this.emit('error', err)
 		});
+
+		console.log('init ice', call)
+		if (call.peerConn) {
+
+			call.peerConn.oniceconnectionstatechange = (event) => {
+				console.log('ICE CHANGE',event)
+			}
+		}
 	}
 
 
@@ -722,6 +729,24 @@ class BastyonCalls extends EventEmitter {
 		document.getElementById('remote-scene').classList.remove('novid')
 	}
 
+
+	initCordovaPermisions() {
+
+		if (window?.cordova) {
+			const permissions = cordova.plugins.permissions;
+			const permList = [
+				permissions.CAMERA,
+				permissions.RECORD_AUDIO
+			];
+			permissions.requestPermissions(permList, success, error);
+			function error() {
+				console.log('Camera permission is not turned on');
+			}
+			function success() {
+				console.log('camera is turned on')
+			}
+		}
+	}
 }
 
 window.BastyonCalls = BastyonCalls
