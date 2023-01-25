@@ -170,7 +170,7 @@ class BastyonCalls extends EventEmitter {
 			// }
 
 			this.setBlinking()
-			this.emit('initcall')
+			this.emit('initcall',call)
 			if(this?.options?.onIncomingCall) {
 				this.options.onIncomingCall(call)
 			}
@@ -473,9 +473,10 @@ class BastyonCalls extends EventEmitter {
 			return
 		}
 
-		this.emit('initcall')
-		const call = matrixcs.createNewMatrixCall(this.client, roomId)
 
+
+		const call = matrixcs.createNewMatrixCall(this.client, roomId)
+		this.emit('initcall',call)
 		call.placeVideoCall(document.getElementById("remote"),document.getElementById("local")).then( (async function() {
 			let members = this.client.store.rooms[ call.roomId ].currentState.members
 			let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
@@ -599,9 +600,7 @@ class BastyonCalls extends EventEmitter {
 				}
 				this.clearBlinking()
 				this.initsync()
-				if(this?.options?.onConnected) {
-					this.options.onConnected(call)
-				}
+				this.emit('connected', call)
 
 			}
 			if (a === 'ended') {
@@ -610,9 +609,7 @@ class BastyonCalls extends EventEmitter {
 				this.syncInterval = null
 				this.signal.pause()
 				this.clearBlinking()
-				if(this?.options?.onEnded) {
-					this.options.onEnded(call)
-				}
+				this.emit('ended', call)
 			}
 		})
 		call.on("hangup", (call) => {
