@@ -10,6 +10,7 @@ class BastyonCalls extends EventEmitter {
 		this.initEvents()
 		this.initSignals()
 		this.initTemplates(root)
+		this.initCordovaPermisions()
 		this.options = options
 	}
 
@@ -140,7 +141,7 @@ class BastyonCalls extends EventEmitter {
 		this.root = document.getElementById('bc-root')
 		this.notify = document.getElementById('bc-notify')
 		if (window) {
-			window.onunload = () => {
+			window.onbeforeunload = () => {
 				if(this.activeCall) {
 					this.activeCall.hangup()
 				}
@@ -369,7 +370,7 @@ class BastyonCalls extends EventEmitter {
 				const senders = self.activeCall.peerConn.getSenders()
 				// console.log('senders', senders)
 				let sender = senders.find((s) => {
-					return s.track.kind == 'video';
+					return s.track.kind === 'video';
 				})
 				// console.log('sender', sender)
 
@@ -472,14 +473,8 @@ class BastyonCalls extends EventEmitter {
 			return
 		}
 
-
-
-		const call = matrixcs.createNewMatrixCall(this.client, roomId)
-
 		this.emit('initcall')
-		if(this?.options?.onInitCall) {
-			this.options.onInitCall(call)
-		}
+		const call = matrixcs.createNewMatrixCall(this.client, roomId)
 
 		call.placeVideoCall(document.getElementById("remote"),document.getElementById("local")).then( (async function() {
 			let members = this.client.store.rooms[ call.roomId ].currentState.members
@@ -656,7 +651,7 @@ class BastyonCalls extends EventEmitter {
 						return
 					}
 					this.renderTemplates.endedCall(call)
-					if (call.hangupReason = "user_hangup" && !call.remoteStream && call.hangupParty !== 'local') {
+					if (call.hangupReason === "user_hangup" && !call.remoteStream && call.hangupParty !== 'local') {
 						// console.log('busy', this.signal)
 						this.signal.loop = false
 						this.signal.src = 'sounds/busy.mp3'
@@ -678,6 +673,7 @@ class BastyonCalls extends EventEmitter {
 		});
 		call.on("replaced", (call) => {
 			console.log('replaced',call)
+			console.log('old',this.activeCall)
 			this.activeCall = null
 			this.signal.pause()
 			let members = this.client.store.rooms[ call.roomId ].currentState.members
@@ -759,6 +755,24 @@ class BastyonCalls extends EventEmitter {
 
 	}
 
+
+	initCordovaPermisions() {
+
+		if (window?.cordova) {
+			const permissions = cordova.plugins.permissions;
+			const permList = [
+				permissions.CAMERA,
+				permissions.RECORD_AUDIO
+			];
+			permissions.requestPermissions(permList, success, error);
+			function error() {
+				console.log('Camera permission is not turned on');
+			}
+			function success() {
+				console.log('camera is turned on')
+			}
+		}
+	}
 }
 
 window.BastyonCalls = BastyonCalls
