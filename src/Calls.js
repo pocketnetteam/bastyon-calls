@@ -25,6 +25,7 @@ class BastyonCalls extends EventEmitter {
 	timer = null
 	timeInterval = null
 	title = null
+	blinkInterval = null
 	templates = {
 		incomingCall : function(){
 			return `
@@ -167,9 +168,11 @@ class BastyonCalls extends EventEmitter {
 			// 	return
 			// }
 
-			this.title = document.querySelector('title').innerHTML
-			document.querySelector('title').innerHTML = this.options.getWithLocale('incomingCall')
+			this.setBlinking()
 			this.emit('initcall')
+			if(this?.options?.onIncomingCall) {
+				this.options.onIncomingCall(call)
+			}
 
 			let members = this.client.store.rooms[ call.roomId ].currentState.members
 			let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
@@ -230,7 +233,6 @@ class BastyonCalls extends EventEmitter {
 	answer(){
 		console.log('state on answer', this.activeCall.state)
 		try {
-			console.log()
 			if (this.activeCall.state !== "connected" || this.activeCall.state !== "ended") {
 				this.activeCall.answer()
 				console.log('Ответ на',this.activeCall)
@@ -470,8 +472,14 @@ class BastyonCalls extends EventEmitter {
 			return
 		}
 
-		this.emit('initcall')
+
+
 		const call = matrixcs.createNewMatrixCall(this.client, roomId)
+
+		this.emit('initcall')
+		if(this?.options?.onInitCall) {
+			this.options.onInitCall(call)
+		}
 
 		call.placeVideoCall(document.getElementById("remote"),document.getElementById("local")).then( (async function() {
 			let members = this.client.store.rooms[ call.roomId ].currentState.members
@@ -529,7 +537,6 @@ class BastyonCalls extends EventEmitter {
 
 	reject(call){
 		call.reject('busy')
-		call.hangup()
 		this.signal.pause()
 	}
 
@@ -587,26 +594,37 @@ class BastyonCalls extends EventEmitter {
 		call.on('state', (a,b) => {
 			console.log('state',a, call)
 			if (a === 'connected') {
+				this.signal.pause()
 				this.showRemoteVideo()
 				if (!this.timeInterval) {
 					this.initTimer()
+				} else {
+					this.signal.loop = false
+					this.signal.src = 'sounds/connected.mp3'
 				}
-				this.signal.pause()
-				// console.log('connected',this)
-				document.querySelector('title').innerHTML = this.title
+				this.clearBlinking()
 				this.initsync()
+				if(this?.options?.onConnected) {
+					this.options.onConnected(call)
+				}
+
 			}
 			if (a === 'ended') {
 				this.clearTimer()
 				clearInterval(this.syncInterval)
 				this.syncInterval = null
 				this.signal.pause()
-				document.querySelector('title').innerHTML = this.title
+				this.clearBlinking()
+				if(this?.options?.onEnded) {
+					this.options.onEnded(call)
+				}
 			}
 		})
 		call.on("hangup", (call) => {
 
 			console.log('hangup', call)
+			this.signal.loop = false
+			this.signal.src = 'sounds/hangup.mp3'
 			clearInterval(this.syncInterval)
 			this.syncInterval = null
 			// console.log('Call ended',call)
@@ -660,7 +678,6 @@ class BastyonCalls extends EventEmitter {
 		});
 		call.on("replaced", (call) => {
 			console.log('replaced',call)
-			console.log('old',this.activeCall)
 			this.activeCall = null
 			this.signal.pause()
 			let members = this.client.store.rooms[ call.roomId ].currentState.members
@@ -694,8 +711,9 @@ class BastyonCalls extends EventEmitter {
 					console.log('wait media!')
 					setTimeout((function(){this.answer()}).bind(this), 1000)
 				} else {
-					this.answer()
+					this.renderTemplates.videoCall()
 					this.showRemoteVideo()
+					call.answer()
 				}
 
 			})
@@ -720,6 +738,25 @@ class BastyonCalls extends EventEmitter {
 
 	showRemoteVideo() {
 		document.getElementById('remote-scene').classList.remove('novid')
+	}
+	setBlinking() {
+		this.title = document.querySelector('title').innerHTML
+		let currentTitle = this.title
+		this.blinkInterval = setInterval((function() {
+			console.log(this, currentTitle)
+			if (currentTitle === this.title) {
+				currentTitle = this.options.getWithLocale('incomingCall')
+			} else {
+				currentTitle = this.title
+			}
+			document.querySelector('title').innerHTML = currentTitle
+		}).bind(this),1000)
+	}
+	clearBlinking() {
+		clearInterval(this.blinkInterval)
+		this.blinkInterval = null
+		document.querySelector('title').innerHTML = this.title
+
 	}
 
 }
