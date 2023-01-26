@@ -10,7 +10,7 @@ class BastyonCalls extends EventEmitter {
 		this.initEvents()
 		this.initSignals()
 		this.initTemplates(root)
-		this.initCordovaPermisions()
+		/*this.initCordovaPermisions()*/ /// TODO
 		this.options = options
 	}
 
@@ -27,6 +27,7 @@ class BastyonCalls extends EventEmitter {
 	timeInterval = null
 	title = null
 	blinkInterval = null
+	destroyed = false
 	templates = {
 		incomingCall : function(){
 			return `
@@ -78,11 +79,11 @@ class BastyonCalls extends EventEmitter {
 			</div>
 			<div class="bc-video-container">
 				<div class="bc-video active novid" id="remote-scene">
-					<video id="remote" pip="false" autoplay playsinline ></video>
+					<video id="remote" pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
 					<div class="avatar">${this.getAvatar()}</div>
 				</div>
 				<div class="bc-video minified">
-					<video id="local" pip="false" autoplay playsinline ></video>
+					<video id="local" pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
 				</div>
 			</div>
 			<div class="bc-controls">
@@ -100,25 +101,34 @@ class BastyonCalls extends EventEmitter {
 	renderTemplates = {
 
 		videoCall : () => {
-			// console.log('videoCall')
+			if(!this.root) return
+
 			this.root.classList.add('middle')
-			// this.root.classList.add('active')
 			this.root.innerHTML = this.templates['videoCall']?.call(this) || ''
 			this.initCallInterface('videoCall')
 		},
 		incomingCall: (call) => {
+
+			if(!this.notify) return
+
 			this.notify.innerHTML = this.templates['incomingCall']?.call(this) || ''
 			this.initCallInterface('incomingCall', call)
 		},
 		clearNotify : () => {
+
+			if(!this.notify) return
+
 			// console.log('clearNotify')
 			this.notify.innerHTML = ''
 		},
 		clearVideo : () => {
-			// console.log('clearVideo')
+			if(!this.root) return
+
 			this.root.innerHTML = ''
 		},
 		clearInterface : () => {
+			if(!this.root) return
+
 			// console.log('clearInterface')
 			this.root.classList.remove('active')
 			this.root.classList.remove('minified')
@@ -126,6 +136,9 @@ class BastyonCalls extends EventEmitter {
 			this.root.classList.remove('full')
 		},
 		endedCall : (call) => {
+
+			if(!this.root) return
+
 			if (this.root.classList.contains('minified')) {
 				this.root.classList.remove('minified')
 				this.root.classList.add('middle')
@@ -135,42 +148,74 @@ class BastyonCalls extends EventEmitter {
 		}
 	}
 
+	destroy(){
+
+		this.destroyed = true
+
+		if(this.activeCall) this.activeCall.hangup()
+		if(this.secondCall) this.secondCall.hangup()
+
+		this.clearTimer()
+		this.clearBlinking()
+		clearInterval(this.syncInterval)
+		
+
+		this.signal?.pause()
+		this.signal = null
+
+		this.renderTemplates.clearInterface()
+		this.renderTemplates.clearVideo()
+		this.renderTemplates.clearNotify()
+
+		if (this.container) 
+			this.container.remove()
+
+		this.container = null
+		this.root = null
+		this.notify = null
+
+		
+	}
+
 	initTemplates(outerRoot){
 		// console.log(outerRoot)
-		outerRoot.insertAdjacentHTML('beforeend', `<div class="bc-container"><div id="bc-notify" class="bc-notify"></div><div id="bc-root"></div></div>`);
+		outerRoot.insertAdjacentHTML('beforeend', `<div class="bc-container" id="bc-container"><div id="bc-notify" class="bc-notify"></div><div id="bc-root"></div></div>`);
+
 		this.root = document.getElementById('bc-root')
 		this.notify = document.getElementById('bc-notify')
+		this.container = document.getElementById('bc-container')
+
 		if (window) {
 			window.onbeforeunload = () => {
-				if(this.activeCall) {
+				if (this.activeCall) {
 					this.activeCall.hangup()
 				}
 			}
 		}
 	}
 
-
 	initEvents(){
+		
 		this.client.on("Call.incoming", async (call) => {
 
-			console.log('incoming call')
-			// console.log('init call', this.activeCall, call)
-			// if (this.activeCall && this?.activeCall?.roomId === roomId) {
-			//
-			// 	console.log('same room call',this)
-			// 	if (this.activeCall.state === "ringing") {
-			// 		console.log('has active, with ringing')
-			// 		this.answer()
-			// 	}
-			// 	if (this.activeCall.state === "ended") {
-			// 		console.log('has active, with ended')
-			// 		this.activeCall = null
-			// 	}
-			// 	return
-			// }
+			console.log('call.state', call.state)
 
+			if (call.state == 'fledgling'){
+				await pretry(() => {
+					return call.state != 'fledgling'
+				}, 50)
+			}
+
+			console.log('call.state2', call.state)
+
+			if (call.hangupParty || call.hangupReason) {
+				return
+			}
+
+			this.clearBlinking()
 			this.setBlinking()
 			this.emit('initcall')
+
 			if(this?.options?.onIncomingCall) {
 				this.options.onIncomingCall(call)
 			}
@@ -205,11 +250,10 @@ class BastyonCalls extends EventEmitter {
 				this.signal = a
 				this.renderTemplates.incomingCall(call)
 				this.signal.src='sounds/incoming.mp3'
-			 })
+			})
 
 
 		});
-
 
 	}
 
@@ -221,6 +265,7 @@ class BastyonCalls extends EventEmitter {
 		clearInterval(this.timeInterval)
 		this.timeInterval = null
 	}
+
 	initTimer() {
 		this.timer = 0
 		let el = document.getElementById('time')
@@ -231,44 +276,60 @@ class BastyonCalls extends EventEmitter {
 			el.innerHTML = `${m}:${ s>=10 ? s : '0'+s}`
 		}).bind(this), 1000)
 	}
+
 	answer(){
-		console.log('state on answer', this.activeCall.state)
-		try {
-			if (this.activeCall.state !== "connected" || this.activeCall.state !== "ended") {
-				this.activeCall.answer()
-				console.log('Ответ на',this.activeCall)
-				this.signal.pause()
-				this.renderTemplates.clearNotify()
-				this.renderTemplates.videoCall()
-			} else {
-				this.isWaitingForConnect = true
-				this.renderTemplates.clearNotify()
-				this.activeCall.hangup()
-				setTimeout(()=> {
-					try {
-						console.log('Сброс + ответ на', this.activeCall)
-						this.activeCall.answer()
-						this.signal.pause()
-						this.isWaitingForConnect = false
-						this.renderTemplates.videoCall()
-					} catch (e) {
-						console.error("Ошибка при ответе на вторую линию", e)
-						this.signal.pause()
-					}
-				}, 1000)
+
+		this.signal?.pause()
+
+		this.initCordovaPermisions().then(() => {
+
+			try {
+				if (this.activeCall.state !== "connected" || this.activeCall.state !== "ended") {
+					
+					this.activeCall.answer()
+					this.renderTemplates.clearNotify()
+					this.renderTemplates.videoCall()
+				
+					
+				} else {
+					this.isWaitingForConnect = true
+					this.renderTemplates.clearNotify()
+					this.activeCall.hangup()
+					setTimeout(()=> {
+
+						if (this.destroyed) return
+
+						try {
+
+
+							this.activeCall.answer()
+							this.isWaitingForConnect = false
+							this.renderTemplates.videoCall()
+
+							
+						} catch (e) {
+							console.error("Ошибка при ответе на вторую линию", e)
+						}
+					}, 1000)
+				}
+
+			} catch (e) {
+				return Promise.reject(e)
 			}
 
-		} catch (e) {
-			// this.renderTemplates.clearNotify()
-			// this.renderTemplates.clearVideo()
-			// this.renderTemplates.clearInterface()
-			console.error('error answer',e)
-			this.signal.pause()
-		}
+			return Promise.resolve()
+
+		}).catch(e => {
+			console.error(e)
+		})
 	}
 
+	
+
 	initsync() {
+
 		let container = document.querySelector('.bc-video-container')
+
 		this.activeCall.peerConn.getStats(null).then((stats) => {
 			let filtered = [...stats].filter(r=> {
 				return r[1].type === 'candidate-pair'
@@ -277,6 +338,7 @@ class BastyonCalls extends EventEmitter {
 				// console.log(stats.get(c.selectedCandidatePairId))
 			})
 		})
+
 		this.syncInterval = setInterval((function(){
 
 
@@ -464,49 +526,57 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	initCall(roomId){
+
 		if (this?.activeCall?.roomId === roomId) {
 			console.log('only one call in room')
 			if (this?.activeCall?.state === "ringing") {
 				console.log('answer to incoming from same room')
 				this.answer()
 			}
-			return
+			return Promise.reject()
 		}
 
-		this.emit('initcall')
-		const call = matrixcs.createNewMatrixCall(this.client, roomId)
 
-		call.placeVideoCall(document.getElementById("remote"),document.getElementById("local")).then( (async function() {
-			let members = this.client.store.rooms[ call.roomId ].currentState.members
-			let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
-			let initiator = members[ initiatorId ]
-			let user = members[this.client.credentials.userId]
+		return this.initCordovaPermisions().then(() => {
+			this.emit('initcall')
 
-			call.initiator = initiator
-			call.user = user
+			const call = matrixcs.createNewMatrixCall(this.client, roomId)
 
-			initiator.source = await this.options.getUserInfo(initiator.userId)[0]
-			this.options.getUserInfo(initiator.userId).then((res) => {
-				initiator.source = res[0] || res
-				this.signal.src='sounds/calling.mp3'
-				this.renderTemplates.videoCall()
-			}).catch(e => console.log('get user info error',e))
-		}).bind(this))
-		this.addCallListeners(call)
-		// console.log('after init',this.activeCall)
-		if (!this.activeCall) {
-			this.activeCall = call
-		} else {
-			// console.log('You have active call',this.activeCall)
-			return
-		}
+			call.placeVideoCall(document.getElementById("remote"),document.getElementById("local")).then( (async function() {
+				let members = this.client.store.rooms[ call.roomId ].currentState.members
+				let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
+				let initiator = members[ initiatorId ]
+				let user = members[this.client.credentials.userId]
 
-		let a = new Audio('js/lib')
-		a.autoplay = true
-		a.loop = true
-		this.signal = a
+				call.initiator = initiator
+				call.user = user
 
-		return call
+				initiator.source = await this.options.getUserInfo(initiator.userId)[0]
+				this.options.getUserInfo(initiator.userId).then((res) => {
+					initiator.source = res[0] || res
+					this.signal.src='sounds/calling.mp3'
+					this.renderTemplates.videoCall()
+				}).catch(e => console.log('get user info error',e))
+			}).bind(this))
+
+			this.addCallListeners(call)
+			// console.log('after init',this.activeCall)
+			if (!this.activeCall) {
+				this.activeCall = call
+			} else {
+				// console.log('You have active call',this.activeCall)
+				return
+			}
+
+			let a = new Audio('js/lib')
+			a.autoplay = true
+			a.loop = true
+			this.signal = a
+
+			return call
+		})
+
+		
 	}
 
 	hexDecode(hex) {
@@ -560,7 +630,6 @@ class BastyonCalls extends EventEmitter {
 					this.activeCall.setRemoteVideoElement(this.videoStreams.remote)
 					this.cameraCount()
 					this.addVideoInterfaceListeners()
-					// console.log('стримы',this.videoStreams)
 				} catch (e) {
 					// console.log('init interface error',e)
 				}
@@ -625,15 +694,20 @@ class BastyonCalls extends EventEmitter {
 			// console.log('Call ended',call)
 			if (!call) {
 				this.renderTemplates.clearNotify()
+
+				return
 			}
+
 			if (call.callId === this.secondCall?.callId) {
 				this.secondCall = null
 				this.renderTemplates.clearNotify()
 				// console.log('second line ended', call)
 			}
+
 			if (call.callId === this.activeCall?.callId) {
 
 				// console.log('first line ended', this)
+
 
 				if(this.isWaitingForConnect) {
 					this.activeCall = this.secondCall
@@ -643,9 +717,10 @@ class BastyonCalls extends EventEmitter {
 				}
 				this.renderTemplates.clearVideo()
 				this.renderTemplates.clearNotify()
+
 				if (call.hangupParty === "local" || call.localVideoElement) {
 					if (this.root.classList.contains('minified') || !this.root.classList.length) {
-						this.renderTemplates.clearVideo()
+						//this.renderTemplates.clearVideo()
 						this.renderTemplates.clearInterface()
 						this.activeCall = null
 						return
@@ -657,15 +732,19 @@ class BastyonCalls extends EventEmitter {
 						this.signal.src = 'sounds/busy.mp3'
 					}
 					setTimeout(() => {
-						this.renderTemplates.clearVideo()
+						//this.renderTemplates.clearVideo()
 						this.renderTemplates.clearInterface()
 						this.activeCall = null
 						// console.log('time out',this.activeCall)
 					}, 3000)
 					return
 				}
+
+				console.log("this.activeCall = null")
+
 				this.signal.pause()
 				this.renderTemplates.clearInterface()
+				this.activeCall = null
 
 			}
 
@@ -735,6 +814,7 @@ class BastyonCalls extends EventEmitter {
 	showRemoteVideo() {
 		document.getElementById('remote-scene').classList.remove('novid')
 	}
+
 	setBlinking() {
 		this.title = document.querySelector('title').innerHTML
 		let currentTitle = this.title
@@ -748,6 +828,7 @@ class BastyonCalls extends EventEmitter {
 			document.querySelector('title').innerHTML = currentTitle
 		}).bind(this),1000)
 	}
+
 	clearBlinking() {
 		clearInterval(this.blinkInterval)
 		this.blinkInterval = null
@@ -758,21 +839,71 @@ class BastyonCalls extends EventEmitter {
 
 	initCordovaPermisions() {
 
-		if (window?.cordova) {
-			const permissions = cordova.plugins.permissions;
-			const permList = [
-				permissions.CAMERA,
-				permissions.RECORD_AUDIO
-			];
-			permissions.requestPermissions(permList, success, error);
-			function error() {
-				console.log('Camera permission is not turned on');
+		return new Promise((resolve, reject) => {
+			if (window?.cordova) {
+				const permissions = cordova.plugins.permissions;
+				const permList = [
+					permissions.CAMERA,
+					permissions.RECORD_AUDIO
+				];
+				permissions.requestPermissions(permList, success, error);
+
+				function error(e) {
+					console.log('Camera permission is not turned on');
+
+					reject(e)
+				}
+				function success() {
+					console.log('camera is turned on')
+					setTimeout(() => {
+						resolve()
+					}, 50)
+					
+				}
 			}
-			function success() {
-				console.log('camera is turned on')
+			else{
+				resolve()
 			}
-		}
+
+			
+		})
+
+		
 	}
+}
+
+var retry = function(_function, clbk, time, totaltime){
+
+    if (_function()){
+
+        if (clbk) clbk();
+
+        return
+    }
+
+    if(!time) time = 20;
+
+    var totalTimeCounter = 0 
+
+    var interval = setInterval(function(){
+
+        if(_function() || (totaltime && totaltime <= totalTimeCounter)){
+
+            clearInterval(interval);
+
+            if(clbk) clbk();
+
+        }
+
+        totalTimeCounter += time
+
+    }, time);
+}
+
+var pretry = function(_function, time, totaltime){
+    return new Promise((resolve, reject) => {
+        retry(_function, resolve, time, totaltime)
+    })
 }
 
 window.BastyonCalls = BastyonCalls
