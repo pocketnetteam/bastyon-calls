@@ -10,7 +10,7 @@ class BastyonCalls extends EventEmitter {
 		this.initEvents()
 		this.initSignals()
 		this.initTemplates(root)
-		this.initCordovaPermisions()
+		/*this.initCordovaPermisions()*/ /// TODO
 		this.options = options
 	}
 
@@ -758,20 +758,31 @@ class BastyonCalls extends EventEmitter {
 
 	initCordovaPermisions() {
 
-		if (window?.cordova) {
-			const permissions = cordova.plugins.permissions;
-			const permList = [
-				permissions.CAMERA,
-				permissions.RECORD_AUDIO
-			];
-			permissions.requestPermissions(permList, success, error);
-			function error() {
-				console.log('Camera permission is not turned on');
+		return Promise.resolve((resolve, reject) => {
+			if (window?.cordova) {
+				const permissions = cordova.plugins.permissions;
+				const permList = [
+					permissions.CAMERA,
+					permissions.RECORD_AUDIO
+				];
+				permissions.requestPermissions(permList, success, error);
+
+				function error(e) {
+					console.log('Camera permission is not turned on');
+
+					reject(e)
+				}
+				function success() {
+					console.log('camera is turned on')
+
+					resolve()
+				}
 			}
-			function success() {
-				console.log('camera is turned on')
-			}
-		}
+
+			resolve()
+		})
+
+		
 	}
 }
 
