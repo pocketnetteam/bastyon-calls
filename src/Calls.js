@@ -78,11 +78,11 @@ class BastyonCalls extends EventEmitter {
 			</div>
 			<div class="bc-video-container">
 				<div class="bc-video active novid" id="remote-scene">
-					<video id="remote" pip="false" autoplay playsinline ></video>
+					<video id="remote" pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="></video>
 					<div class="avatar">${this.getAvatar()}</div>
 				</div>
 				<div class="bc-video minified">
-					<video id="local" pip="false" autoplay playsinline ></video>
+					<video id="local" pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="></video>
 				</div>
 			</div>
 			<div class="bc-controls">
