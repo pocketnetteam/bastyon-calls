@@ -10,6 +10,7 @@ class BastyonCalls extends EventEmitter {
 		this.initEvents()
 		this.initSignals()
 		this.initTemplates(root)
+		this.initCordovaPermisions()
 		this.options = options
 	}
 
@@ -25,6 +26,7 @@ class BastyonCalls extends EventEmitter {
 	timer = null
 	timeInterval = null
 	title = null
+	blinkInterval = null
 	templates = {
 		incomingCall : function(){
 			return `
@@ -139,7 +141,7 @@ class BastyonCalls extends EventEmitter {
 		this.root = document.getElementById('bc-root')
 		this.notify = document.getElementById('bc-notify')
 		if (window) {
-			window.onunload = () => {
+			window.onbeforeunload = () => {
 				if(this.activeCall) {
 					this.activeCall.hangup()
 				}
@@ -167,9 +169,11 @@ class BastyonCalls extends EventEmitter {
 			// 	return
 			// }
 
-			this.title = document.querySelector('title').innerHTML
-			document.querySelector('title').innerHTML = this.options.getWithLocale('incomingCall')
+			this.setBlinking()
 			this.emit('initcall')
+			if(this?.options?.onIncomingCall) {
+				this.options.onIncomingCall(call)
+			}
 
 			let members = this.client.store.rooms[ call.roomId ].currentState.members
 			let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
@@ -230,7 +234,6 @@ class BastyonCalls extends EventEmitter {
 	answer(){
 		console.log('state on answer', this.activeCall.state)
 		try {
-			console.log()
 			if (this.activeCall.state !== "connected" || this.activeCall.state !== "ended") {
 				this.activeCall.answer()
 				console.log('Ответ на',this.activeCall)
@@ -367,7 +370,7 @@ class BastyonCalls extends EventEmitter {
 				const senders = self.activeCall.peerConn.getSenders()
 				// console.log('senders', senders)
 				let sender = senders.find((s) => {
-					return s.track.kind == 'video';
+					return s.track.kind === 'video';
 				})
 				// console.log('sender', sender)
 
@@ -529,7 +532,6 @@ class BastyonCalls extends EventEmitter {
 
 	reject(call){
 		call.reject('busy')
-		call.hangup()
 		this.signal.pause()
 	}
 
@@ -587,26 +589,37 @@ class BastyonCalls extends EventEmitter {
 		call.on('state', (a,b) => {
 			console.log('state',a, call)
 			if (a === 'connected') {
+				this.signal.pause()
 				this.showRemoteVideo()
 				if (!this.timeInterval) {
 					this.initTimer()
+				} else {
+					this.signal.loop = false
+					this.signal.src = 'sounds/connected.mp3'
 				}
-				this.signal.pause()
-				// console.log('connected',this)
-				document.querySelector('title').innerHTML = this.title
+				this.clearBlinking()
 				this.initsync()
+				if(this?.options?.onConnected) {
+					this.options.onConnected(call)
+				}
+
 			}
 			if (a === 'ended') {
 				this.clearTimer()
 				clearInterval(this.syncInterval)
 				this.syncInterval = null
 				this.signal.pause()
-				document.querySelector('title').innerHTML = this.title
+				this.clearBlinking()
+				if(this?.options?.onEnded) {
+					this.options.onEnded(call)
+				}
 			}
 		})
 		call.on("hangup", (call) => {
 
 			console.log('hangup', call)
+			this.signal.loop = false
+			this.signal.src = 'sounds/hangup.mp3'
 			clearInterval(this.syncInterval)
 			this.syncInterval = null
 			// console.log('Call ended',call)
@@ -638,7 +651,7 @@ class BastyonCalls extends EventEmitter {
 						return
 					}
 					this.renderTemplates.endedCall(call)
-					if (call.hangupReason = "user_hangup" && !call.remoteStream && call.hangupParty !== 'local') {
+					if (call.hangupReason === "user_hangup" && !call.remoteStream && call.hangupParty !== 'local') {
 						// console.log('busy', this.signal)
 						this.signal.loop = false
 						this.signal.src = 'sounds/busy.mp3'
@@ -694,8 +707,9 @@ class BastyonCalls extends EventEmitter {
 					console.log('wait media!')
 					setTimeout((function(){this.answer()}).bind(this), 1000)
 				} else {
-					this.answer()
+					this.renderTemplates.videoCall()
 					this.showRemoteVideo()
+					call.answer()
 				}
 
 			})
@@ -721,7 +735,44 @@ class BastyonCalls extends EventEmitter {
 	showRemoteVideo() {
 		document.getElementById('remote-scene').classList.remove('novid')
 	}
+	setBlinking() {
+		this.title = document.querySelector('title').innerHTML
+		let currentTitle = this.title
+		this.blinkInterval = setInterval((function() {
+			console.log(this, currentTitle)
+			if (currentTitle === this.title) {
+				currentTitle = this.options.getWithLocale('incomingCall')
+			} else {
+				currentTitle = this.title
+			}
+			document.querySelector('title').innerHTML = currentTitle
+		}).bind(this),1000)
+	}
+	clearBlinking() {
+		clearInterval(this.blinkInterval)
+		this.blinkInterval = null
+		document.querySelector('title').innerHTML = this.title
 
+	}
+
+
+	initCordovaPermisions() {
+
+		if (window?.cordova) {
+			const permissions = cordova.plugins.permissions;
+			const permList = [
+				permissions.CAMERA,
+				permissions.RECORD_AUDIO
+			];
+			permissions.requestPermissions(permList, success, error);
+			function error() {
+				console.log('Camera permission is not turned on');
+			}
+			function success() {
+				console.log('camera is turned on')
+			}
+		}
+	}
 }
 
 window.BastyonCalls = BastyonCalls
