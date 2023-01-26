@@ -235,22 +235,36 @@ class BastyonCalls extends EventEmitter {
 		console.log('state on answer', this.activeCall.state)
 		try {
 			if (this.activeCall.state !== "connected" || this.activeCall.state !== "ended") {
-				this.activeCall.answer()
+				
 				console.log('Ответ на',this.activeCall)
 				this.signal.pause()
-				this.renderTemplates.clearNotify()
-				this.renderTemplates.videoCall()
+
+				this.initCordovaPermisions().then(() => {
+					this.activeCall.answer()
+					this.renderTemplates.clearNotify()
+					this.renderTemplates.videoCall()
+				}).catch(e => {
+
+				})
+
+				
 			} else {
 				this.isWaitingForConnect = true
 				this.renderTemplates.clearNotify()
 				this.activeCall.hangup()
 				setTimeout(()=> {
 					try {
-						console.log('Сброс + ответ на', this.activeCall)
-						this.activeCall.answer()
+
 						this.signal.pause()
-						this.isWaitingForConnect = false
-						this.renderTemplates.videoCall()
+
+						this.initCordovaPermisions().then(() => {
+							this.activeCall.answer()
+							this.isWaitingForConnect = false
+							this.renderTemplates.videoCall()
+
+						}).catch(e => {
+
+						})
 					} catch (e) {
 						console.error("Ошибка при ответе на вторую линию", e)
 						this.signal.pause()
@@ -464,6 +478,7 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	initCall(roomId){
+
 		if (this?.activeCall?.roomId === roomId) {
 			console.log('only one call in room')
 			if (this?.activeCall?.state === "ringing") {
@@ -473,40 +488,47 @@ class BastyonCalls extends EventEmitter {
 			return
 		}
 
-		this.emit('initcall')
-		const call = matrixcs.createNewMatrixCall(this.client, roomId)
 
-		call.placeVideoCall(document.getElementById("remote"),document.getElementById("local")).then( (async function() {
-			let members = this.client.store.rooms[ call.roomId ].currentState.members
-			let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
-			let initiator = members[ initiatorId ]
-			let user = members[this.client.credentials.userId]
+		return this.initCordovaPermisions(() => {
+			this.emit('initcall')
 
-			call.initiator = initiator
-			call.user = user
+			const call = matrixcs.createNewMatrixCall(this.client, roomId)
 
-			initiator.source = await this.options.getUserInfo(initiator.userId)[0]
-			this.options.getUserInfo(initiator.userId).then((res) => {
-				initiator.source = res[0] || res
-				this.signal.src='sounds/calling.mp3'
-				this.renderTemplates.videoCall()
-			}).catch(e => console.log('get user info error',e))
-		}).bind(this))
-		this.addCallListeners(call)
-		// console.log('after init',this.activeCall)
-		if (!this.activeCall) {
-			this.activeCall = call
-		} else {
-			// console.log('You have active call',this.activeCall)
-			return
-		}
+			call.placeVideoCall(document.getElementById("remote"),document.getElementById("local")).then( (async function() {
+				let members = this.client.store.rooms[ call.roomId ].currentState.members
+				let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
+				let initiator = members[ initiatorId ]
+				let user = members[this.client.credentials.userId]
 
-		let a = new Audio('js/lib')
-		a.autoplay = true
-		a.loop = true
-		this.signal = a
+				call.initiator = initiator
+				call.user = user
 
-		return call
+				initiator.source = await this.options.getUserInfo(initiator.userId)[0]
+				this.options.getUserInfo(initiator.userId).then((res) => {
+					initiator.source = res[0] || res
+					this.signal.src='sounds/calling.mp3'
+					this.renderTemplates.videoCall()
+				}).catch(e => console.log('get user info error',e))
+			}).bind(this))
+
+			this.addCallListeners(call)
+			// console.log('after init',this.activeCall)
+			if (!this.activeCall) {
+				this.activeCall = call
+			} else {
+				// console.log('You have active call',this.activeCall)
+				return
+			}
+
+			let a = new Audio('js/lib')
+			a.autoplay = true
+			a.loop = true
+			this.signal = a
+
+			return call
+		})
+
+		
 	}
 
 	hexDecode(hex) {
