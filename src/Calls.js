@@ -422,11 +422,62 @@ class BastyonCalls extends EventEmitter {
 		})
 	}
 
+	devices() {
+
+		return navigator.mediaDevices.enumerateDevices().then((devices = []) => {
+
+			if(window.cordova && window.cordova.plugins.EnumerateDevicesPlugin){
+		
+				return cordova.plugins.EnumerateDevicesPlugin.getEnumerateDevices().then((cdevices = []) => {
+		
+					var usedids = {}
+					var rdevices = []
+
+					cdevices.reverse()
+					
+					devices.forEach((device) => {
+		
+						var clone = {
+							deviceId : device.deviceId,
+							groupId: device.groupId,
+							kind : device.kind,
+							label : device.label
+						}
+						
+						var match = cdevices.find((d, i) => {
+							return clone.kind == d.kind && !usedids[d.deviceId]
+						})
+		
+						if (match) {
+							usedids[match.deviceId] = true
+		
+							if(!clone.label){
+								clone.label = (match.label || "").toLowerCase()
+							}
+						}
+		
+						rdevices.push(clone)
+		
+					})
+		
+					return Promise.resolve(rdevices)
+		
+				})
+			}
+		
+			return Promise.resolve(devices)
+		})
+	
+	}
+
 	camera(e) {
 		let self = this
 
 		try {
-			navigator.mediaDevices.enumerateDevices().then( (dev) => {
+			this.devices().then( (dev) => {
+
+				console.log(dev)
+
 				let video = dev.filter(d => d.kind === 'videoinput')
 				let target
 				const senders = self.activeCall.peerConn.getSenders()
@@ -436,21 +487,27 @@ class BastyonCalls extends EventEmitter {
 				})
 				// console.log('sender', sender)
 
-				if (sender && sender?.label?.includes('front' || 'передней')){
+				console.log('video', video)
+
+				/*if (sender && sender?.label?.includes('front' || 'передней')){
 					// console.log('Front camera is active')
 					self.isFrontalCamera = true
-				}
+				}*/
 				// console.log('video list', video)
+
+				console.log('sender', sender)
+
+				if(!sender) return
 
 				if (video.length > 1) {
 
 					if (sender.track.label.includes('front') || sender.track.label.includes('передней')) {
-						// console.log('to back')
+						console.log('to back')
 						target = video.reverse().find((device) => {
 							return device.label.includes('back') || device.label.includes('задней')
 						})
 					} else {
-						// console.log('to front')
+						console.log('to front')
 						target = video.find((device) => {
 							return device.label.includes('front') || device.label.includes('передней')
 						})
@@ -458,8 +515,14 @@ class BastyonCalls extends EventEmitter {
 
 				} else return
 
+				console.log('target', target)
+
+				if(!target) return
+
 				let videoConstraints = {}
 				videoConstraints.deviceId = { exact: target.deviceId }
+
+				console.log('videoConstraints', videoConstraints)
 
 				const constraints = {
 					video: videoConstraints,
