@@ -27,6 +27,7 @@ class BastyonCalls extends EventEmitter {
 	timeInterval = null
 	title = null
 	blinkInterval = null
+	destroyed = false
 	templates = {
 		incomingCall : function(){
 			return `
@@ -100,25 +101,34 @@ class BastyonCalls extends EventEmitter {
 	renderTemplates = {
 
 		videoCall : () => {
-			// console.log('videoCall')
+			if(!this.root) return
+
 			this.root.classList.add('middle')
-			// this.root.classList.add('active')
 			this.root.innerHTML = this.templates['videoCall']?.call(this) || ''
 			this.initCallInterface('videoCall')
 		},
 		incomingCall: (call) => {
+
+			if(!this.notify) return
+
 			this.notify.innerHTML = this.templates['incomingCall']?.call(this) || ''
 			this.initCallInterface('incomingCall', call)
 		},
 		clearNotify : () => {
+
+			if(!this.notify) return
+
 			// console.log('clearNotify')
 			this.notify.innerHTML = ''
 		},
 		clearVideo : () => {
-			// console.log('clearVideo')
+			if(!this.root) return
+
 			this.root.innerHTML = ''
 		},
 		clearInterface : () => {
+			if(!this.root) return
+
 			// console.log('clearInterface')
 			this.root.classList.remove('active')
 			this.root.classList.remove('minified')
@@ -126,6 +136,9 @@ class BastyonCalls extends EventEmitter {
 			this.root.classList.remove('full')
 		},
 		endedCall : (call) => {
+
+			if(!this.root) return
+
 			if (this.root.classList.contains('minified')) {
 				this.root.classList.remove('minified')
 				this.root.classList.add('middle')
@@ -135,42 +148,74 @@ class BastyonCalls extends EventEmitter {
 		}
 	}
 
+	destroy(){
+
+		this.destroyed = true
+
+		if(this.activeCall) this.activeCall.hangup()
+		if(this.secondCall) this.secondCall.hangup()
+
+		this.clearTimer()
+		this.clearBlinking()
+		clearInterval(this.syncInterval)
+		
+
+		this.signal?.pause()
+		this.signal = null
+
+		this.renderTemplates.clearInterface()
+		this.renderTemplates.clearVideo()
+		this.renderTemplates.clearNotify()
+
+		if (this.container) 
+			this.container.remove()
+
+		this.container = null
+		this.root = null
+		this.notify = null
+
+		
+	}
+
 	initTemplates(outerRoot){
 		// console.log(outerRoot)
-		outerRoot.insertAdjacentHTML('beforeend', `<div class="bc-container"><div id="bc-notify" class="bc-notify"></div><div id="bc-root"></div></div>`);
+		outerRoot.insertAdjacentHTML('beforeend', `<div class="bc-container" id="bc-container"><div id="bc-notify" class="bc-notify"></div><div id="bc-root"></div></div>`);
+
 		this.root = document.getElementById('bc-root')
 		this.notify = document.getElementById('bc-notify')
+		this.container = document.getElementById('bc-container')
+
 		if (window) {
 			window.onbeforeunload = () => {
-				if(this.activeCall) {
+				if (this.activeCall) {
 					this.activeCall.hangup()
 				}
 			}
 		}
 	}
 
-
 	initEvents(){
+		
 		this.client.on("Call.incoming", async (call) => {
 
-			console.log('incoming call')
-			// console.log('init call', this.activeCall, call)
-			// if (this.activeCall && this?.activeCall?.roomId === roomId) {
-			//
-			// 	console.log('same room call',this)
-			// 	if (this.activeCall.state === "ringing") {
-			// 		console.log('has active, with ringing')
-			// 		this.answer()
-			// 	}
-			// 	if (this.activeCall.state === "ended") {
-			// 		console.log('has active, with ended')
-			// 		this.activeCall = null
-			// 	}
-			// 	return
-			// }
+			console.log('call.state', call.state)
 
+			if (call.state == 'fledgling'){
+				await pretry(() => {
+					return call.state != 'fledgling'
+				}, 50)
+			}
+
+			console.log('call.state2', call.state)
+
+			if (call.hangupParty || call.hangupReason) {
+				return
+			}
+
+			this.clearBlinking()
 			this.setBlinking()
 			this.emit('initcall')
+
 			if(this?.options?.onIncomingCall) {
 				this.options.onIncomingCall(call)
 			}
@@ -205,11 +250,10 @@ class BastyonCalls extends EventEmitter {
 				this.signal = a
 				this.renderTemplates.incomingCall(call)
 				this.signal.src='sounds/incoming.mp3'
-			 })
+			})
 
 
 		});
-
 
 	}
 
@@ -221,6 +265,7 @@ class BastyonCalls extends EventEmitter {
 		clearInterval(this.timeInterval)
 		this.timeInterval = null
 	}
+
 	initTimer() {
 		this.timer = 0
 		let el = document.getElementById('time')
@@ -231,8 +276,8 @@ class BastyonCalls extends EventEmitter {
 			el.innerHTML = `${m}:${ s>=10 ? s : '0'+s}`
 		}).bind(this), 1000)
 	}
+
 	answer(){
-		console.log('state on answer', this.activeCall.state)
 
 		this.signal?.pause()
 
@@ -240,8 +285,6 @@ class BastyonCalls extends EventEmitter {
 
 			try {
 				if (this.activeCall.state !== "connected" || this.activeCall.state !== "ended") {
-					
-					console.log('response', this.activeCall)
 					
 					this.activeCall.answer()
 					this.renderTemplates.clearNotify()
@@ -253,6 +296,9 @@ class BastyonCalls extends EventEmitter {
 					this.renderTemplates.clearNotify()
 					this.activeCall.hangup()
 					setTimeout(()=> {
+
+						if (this.destroyed) return
+
 						try {
 
 
@@ -278,8 +324,12 @@ class BastyonCalls extends EventEmitter {
 		})
 	}
 
+	
+
 	initsync() {
+
 		let container = document.querySelector('.bc-video-container')
+
 		this.activeCall.peerConn.getStats(null).then((stats) => {
 			let filtered = [...stats].filter(r=> {
 				return r[1].type === 'candidate-pair'
@@ -288,6 +338,7 @@ class BastyonCalls extends EventEmitter {
 				// console.log(stats.get(c.selectedCandidatePairId))
 			})
 		})
+
 		this.syncInterval = setInterval((function(){
 
 
@@ -579,7 +630,6 @@ class BastyonCalls extends EventEmitter {
 					this.activeCall.setRemoteVideoElement(this.videoStreams.remote)
 					this.cameraCount()
 					this.addVideoInterfaceListeners()
-					// console.log('стримы',this.videoStreams)
 				} catch (e) {
 					// console.log('init interface error',e)
 				}
@@ -764,6 +814,7 @@ class BastyonCalls extends EventEmitter {
 	showRemoteVideo() {
 		document.getElementById('remote-scene').classList.remove('novid')
 	}
+
 	setBlinking() {
 		this.title = document.querySelector('title').innerHTML
 		let currentTitle = this.title
@@ -777,6 +828,7 @@ class BastyonCalls extends EventEmitter {
 			document.querySelector('title').innerHTML = currentTitle
 		}).bind(this),1000)
 	}
+
 	clearBlinking() {
 		clearInterval(this.blinkInterval)
 		this.blinkInterval = null
@@ -818,6 +870,40 @@ class BastyonCalls extends EventEmitter {
 
 		
 	}
+}
+
+var retry = function(_function, clbk, time, totaltime){
+
+    if (_function()){
+
+        if (clbk) clbk();
+
+        return
+    }
+
+    if(!time) time = 20;
+
+    var totalTimeCounter = 0 
+
+    var interval = setInterval(function(){
+
+        if(_function() || (totaltime && totaltime <= totalTimeCounter)){
+
+            clearInterval(interval);
+
+            if(clbk) clbk();
+
+        }
+
+        totalTimeCounter += time
+
+    }, time);
+}
+
+var pretry = function(_function, time, totaltime){
+    return new Promise((resolve, reject) => {
+        retry(_function, resolve, time, totaltime)
+    })
 }
 
 window.BastyonCalls = BastyonCalls
