@@ -758,7 +758,7 @@ class BastyonCalls extends EventEmitter {
 
 	initCordovaPermisions() {
 
-		return Promise.resolve((resolve, reject) => {
+		return new Promise((resolve, reject) => {
 			if (window?.cordova) {
 				const permissions = cordova.plugins.permissions;
 				const permList = [
