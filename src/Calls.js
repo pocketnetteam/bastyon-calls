@@ -783,7 +783,7 @@ class BastyonCalls extends EventEmitter {
 
 				if (call.hangupParty === "local" || call.localVideoElement) {
 					if (this.root.classList.contains('minified') || !this.root.classList.length) {
-						//this.renderTemplates.clearVideo()
+						this.renderTemplates.clearVideo()
 						this.renderTemplates.clearInterface()
 						this.activeCall = null
 						return
@@ -795,7 +795,7 @@ class BastyonCalls extends EventEmitter {
 						this.signal.src = 'sounds/busy.mp3'
 					}
 					setTimeout(() => {
-						//this.renderTemplates.clearVideo()
+						this.renderTemplates.clearVideo()
 						this.renderTemplates.clearInterface()
 						this.activeCall = null
 						// console.log('time out',this.activeCall)
@@ -882,7 +882,7 @@ class BastyonCalls extends EventEmitter {
 		this.title = document.querySelector('title').innerHTML
 		let currentTitle = this.title
 		this.blinkInterval = setInterval((function() {
-			console.log(this, currentTitle)
+	
 			if (currentTitle === this.title) {
 				currentTitle = this.options.getWithLocale('incomingCall')
 			} else {
