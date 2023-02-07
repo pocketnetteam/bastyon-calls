@@ -876,6 +876,13 @@ class BastyonCalls extends EventEmitter {
 
 	showRemoteVideo() {
 		document.getElementById('remote-scene').classList.remove('novid')
+		let sender = this.activeCall.peerConn.getSenders().find((s) => {
+			return s.track.kind === 'audio';
+		})
+		if (!sender.track.enabled) {
+			console.log('sound off, fixing')
+			sender.track.enabled = true
+		}
 	}
 
 	setBlinking() {
