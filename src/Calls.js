@@ -1,5 +1,6 @@
 import {EventEmitter} from 'events';
 import "./scss/index.sass";
+import {logPlugin} from "@babel/preset-env/lib/debug";
 
 class BastyonCalls extends EventEmitter {
 
@@ -72,7 +73,7 @@ class BastyonCalls extends EventEmitter {
 					</div>
 				</div>
 				<div class="options">
-					<button class="bc-btn bc-cog" id="bc-cog"><i class="fas fa-cog"></i></button>
+<!--					<button class="bc-btn bc-cog" id="bc-cog"><i class="fas fa-cog"></i></button>-->
 					<button class="bc-btn bc-pip" id="bc-pip"><i class="fas fa-minus"></i></button>
 					<button class="bc-btn bc-format" id="bc-format"><i class="fas"></i></button>
 				</div>
@@ -574,7 +575,9 @@ class BastyonCalls extends EventEmitter {
 		}
 	}
 	pip() {
+		console.log('pip',this.root.classList)
 		if (this.root.classList.contains('middle')) {
+
 			this.root.classList.remove('middle')
 			this.root.classList.add('minified')
 		} else if (this.root.classList.contains('full')) {
@@ -708,9 +711,10 @@ class BastyonCalls extends EventEmitter {
 		document.getElementById("bc-hide").addEventListener('click', (e) => this.hide.call(this,e))
 		document.getElementById("bc-camera").addEventListener('click', (e) => this.camera.call(this,e))
 		document.getElementById("bc-expand").addEventListener('click', (e) => this.pip.call(this,e))
+		document.getElementById("bc-pip").addEventListener('click', (e) => this.pip.call(this,e))
 		document.getElementById("bc-cog").addEventListener('click', (e) => this.settings.call(this,e))
 		document.getElementById("bc-format").addEventListener('click', (e) => this.format.call(this,e))
-		document.getElementById("bc-pip").addEventListener('click', (e) => this.pip.call(this,e))
+
 		// this.root.addEventListener('click',(e) => this.play.call(this,e))
 
 
@@ -876,6 +880,13 @@ class BastyonCalls extends EventEmitter {
 
 	showRemoteVideo() {
 		document.getElementById('remote-scene').classList.remove('novid')
+		let sender = this.activeCall.peerConn.getSenders().find((s) => {
+			return s.track.kind === 'audio';
+		})
+		if (!sender.track.enabled) {
+			console.log('sound off, fixing')
+			sender.track.enabled = true
+		}
 	}
 
 	setBlinking() {
