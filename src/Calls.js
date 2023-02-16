@@ -81,7 +81,10 @@ class BastyonCalls extends EventEmitter {
 			<div class="bc-video-container">
 				<div class="bc-video active novid" id="remote-scene">
 					<video id="remote" pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
-					<div class="avatar">${this.getAvatar()}</div>
+					<div class="avatar">
+						${this.getAvatar()}
+					</div>
+					<div class="status">connecting...</div>
 				</div>
 				<div class="bc-video minified">
 					<video id="local" pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
@@ -435,9 +438,9 @@ class BastyonCalls extends EventEmitter {
 					var rdevices = []
 
 					cdevices.reverse()
-					
+					console.log('cdevices', cdevices)
+					console.log('devices', devices)
 					devices.forEach((device) => {
-		
 						var clone = {
 							deviceId : device.deviceId,
 							groupId: device.groupId,
@@ -456,11 +459,11 @@ class BastyonCalls extends EventEmitter {
 								clone.label = (match.label || "").toLowerCase()
 							}
 						}
-		
+
 						rdevices.push(clone)
 		
 					})
-		
+					console.log(rdevices)
 					return Promise.resolve(rdevices)
 		
 				})
@@ -477,7 +480,7 @@ class BastyonCalls extends EventEmitter {
 		try {
 			this.devices().then( (dev) => {
 
-				console.log(dev)
+				console.log('devices',dev)
 
 				let video = dev.filter(d => d.kind === 'videoinput')
 				let target
@@ -507,10 +510,15 @@ class BastyonCalls extends EventEmitter {
 						target = video.reverse().find((device) => {
 							return device.label.includes('back') || device.label.includes('задней')
 						})
-					} else {
+					} else if (sender.track.label.includes('back') || sender.track.label.includes('задней')) {
 						console.log('to front')
 						target = video.find((device) => {
 							return device.label.includes('front') || device.label.includes('передней')
+						})
+					} else{
+						console.log('no labeled')
+						target = video.find((device) => {
+							return device.label !== sender.track.label
 						})
 					}
 
@@ -622,7 +630,10 @@ class BastyonCalls extends EventEmitter {
 					initiator.source = res[0] || res
 					this.signal.src='sounds/calling.mp3'
 					this.renderTemplates.videoCall()
-				}).catch(e => console.log('get user info error',e))
+				}).catch(e => {
+					console.log('get user info error',e)
+					throw new Error(e)
+				})
 			}).bind(this))
 
 			this.addCallListeners(call)
@@ -724,15 +735,22 @@ class BastyonCalls extends EventEmitter {
 
 		call.on('state', (a,b) => {
 			console.log('state',a, call)
+
+			if	(a === 'connecting') {
+				this.signal.pause()
+				this.showConnecting()
+			}
 			if (a === 'connected') {
 				this.signal.pause()
 				this.showRemoteVideo()
 				if (!this.timeInterval) {
 					this.initTimer()
 				} else {
-					this.signal.loop = false
-					this.signal.src = 'sounds/connected.mp3'
+
 				}
+				this.signal.loop = false
+				this.signal.src = 'sounds/connected.mp3'
+
 				this.clearBlinking()
 				this.initsync()
 				if(this?.options?.onConnected) {
@@ -880,6 +898,7 @@ class BastyonCalls extends EventEmitter {
 
 	showRemoteVideo() {
 		document.getElementById('remote-scene').classList.remove('novid')
+		document.getElementById('remote-scene').classList.remove('connecting')
 		let sender = this.activeCall.peerConn.getSenders().find((s) => {
 			return s.track.kind === 'audio';
 		})
@@ -887,6 +906,10 @@ class BastyonCalls extends EventEmitter {
 			console.log('sound off, fixing')
 			sender.track.enabled = true
 		}
+	}
+
+	showConnecting() {
+		document.getElementById('remote-scene').classList.add('connecting')
 	}
 
 	setBlinking() {
@@ -936,7 +959,38 @@ class BastyonCalls extends EventEmitter {
 				}
 			}
 			else{
-				resolve()
+				(async ()=>{
+					try {
+						const isWebkit = !!navigator.webkitGetUserMedia;
+						let stream = await navigator.mediaDevices.getUserMedia({
+							audio: true,
+							video: {
+								facingMode: ['user', 'environment'],
+
+								/* We want 640x360.  Chrome will give it only if we ask exactly,
+								   FF refuses entirely if we ask exactly, so have to ask for ideal
+								   instead
+								   XXX: Is this still true?
+								 */
+								width: isWebkit ? {
+									exact: 640
+								} : {
+									ideal: 640
+								},
+								height: isWebkit ? {
+									exact: 360
+								} : {
+									ideal: 360
+								}
+							}
+						});
+						resolve()
+						console.log('resolve', stream)
+					} catch (e) {
+						console.log('reject',e)
+						reject(e)
+					}
+				})()
 			}
 
 			

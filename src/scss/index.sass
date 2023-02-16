@@ -343,6 +343,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
         border: 2px solid rgba(var(--background-hidden-layer, .1))
         width: 160px
         height: 160px
+        margin-bottom: 20px
         border-radius: 50%
         overflow: hidden
         display: none
@@ -353,6 +354,12 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
         img
           width: 100%
           height: 100%
+      .status
+        display: none
+        height: 0
+        color: rgba(var(--background-hidden-layer, .1))
+        transition: opacity .3s ease
+        animation: 2s callPulse infinite
       video
         max-height: 100vh
         max-width: 100vw
@@ -360,10 +367,16 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
       &.novid
         max-height: 100%
         align-items: center
+        align-content: center
+        flex-wrap: wrap
+        max-width: 200px
         .avatar
           display: flex
         video
           display: none
+        &.connecting
+          .status
+            display: block
 
     &.minified
       margin: 0
@@ -479,6 +492,17 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
         @media (pointer: fine)
           &:hover
             width: 400px
+
+
+@keyframes callPulse
+  0%
+    opacity: 1
+  50%
+    opacity: 0
+  100%
+    opacity: 1
+
+
 
 button
   outline: none
