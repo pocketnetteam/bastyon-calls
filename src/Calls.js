@@ -1,6 +1,5 @@
 import {EventEmitter} from 'events';
 import "./scss/index.sass";
-import {logPlugin} from "@babel/preset-env/lib/debug";
 
 class BastyonCalls extends EventEmitter {
 
@@ -333,7 +332,6 @@ class BastyonCalls extends EventEmitter {
 	initsync() {
 
 		let container = document.querySelector('.bc-video-container')
-
 		this.activeCall.peerConn.getStats(null).then((stats) => {
 			let filtered = [...stats].filter(r=> {
 				return r[1].type === 'candidate-pair'
@@ -345,10 +343,45 @@ class BastyonCalls extends EventEmitter {
 
 		this.syncInterval = setInterval((function(){
 
-
 			if(this?.activeCall?.remoteStream) {
 				let track = this?.activeCall?.remoteStream.getVideoTracks()[0]
+				let onMouseMove
 				if(this.root.classList.contains('minified')){
+					this.root.onmousedown = (event) => {
+						if (event.target.classList.contains('bc-btn')) return
+						this.root.style.cursor = 'grabbing'
+						this.root.style.bottom = 'initial'
+						this.root.style.zIndex = 10000000;
+
+						 let moveAt = (pageX, pageY) =>{
+							this.root.style.left = pageX - this.root.offsetWidth / 2 + 'px';
+							this.root.style.top = pageY - this.root.offsetHeight / 2 + 'px';
+						}
+
+						// move our absolutely positioned container under the pointer
+						moveAt(event.pageX, event.pageY);
+
+						onMouseMove = (event) =>{
+							moveAt(event.pageX, event.pageY);
+						}
+
+						document.addEventListener('mousemove', onMouseMove);
+
+						this.root.onmouseup = (event) => {
+							document.removeEventListener('mousemove', onMouseMove);
+							this.root.style.cursor = 'grab'
+							console.log('mouse up')
+						};
+						this.root.ontouchend  = (event) => {
+							document.removeEventListener('mousemove', onMouseMove);
+							this.root.style.cursor = 'grab'
+							console.log('touch end')
+						};
+						event.stopPropagation()
+
+					};
+
+					
 					let aspectRatio = track.getSettings().aspectRatio
 					if (aspectRatio){
 						container.style.aspectRatio = aspectRatio
@@ -358,9 +391,13 @@ class BastyonCalls extends EventEmitter {
 							container.classList.remove('vertical')
 						}
 					}
+				} else {
+					document.removeEventListener('mousemove', onMouseMove);
+					this.root.style = {}
+					this.root.onmousedown = null
 				}
 			}
-		}).bind(this),1000)
+		}).bind(this),300)
 	}
 
 	// play(e){
@@ -574,25 +611,27 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	format() {
+		console.log('format',this.root)
 		if (this.root.classList.contains('middle')) {
+			console.log('to full')
 			this.root.classList.remove('middle')
 			this.root.classList.add('full')
 		} else if (this.root.classList.contains('full')) {
+			console.log('to middle')
 			this.root.classList.remove('full')
 			this.root.classList.add('middle')
 		}
 	}
-	pip() {
-		console.log('pip',this.root.classList)
+	pip(e) {
+		console.log('pip',e)
 		if (this.root.classList.contains('middle')) {
-
 			this.root.classList.remove('middle')
 			this.root.classList.add('minified')
 		} else if (this.root.classList.contains('full')) {
 			this.root.classList.remove('full')
 			this.root.classList.add('minified')
 		} else {
-			clearInterval(this.syncInterval)
+			// clearInterval(this.syncInterval)
 			// console.log('interval',this.syncInterval)
 			this.root.classList.remove('minified')
 			this.root.classList.add('middle')
@@ -715,20 +754,16 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	addVideoInterfaceListeners(){
-		// this.videoStreams.local.addEventListener('click', (e) => this.changeView.call(this, e))
-		document.getElementById("remote-scene").addEventListener('click', (e) => this.pip.call(this, e))
 		document.getElementById("bc-decline").addEventListener('click', (e) => this.hangup.call(this,e))
 		document.getElementById("bc-mute").addEventListener('click', (e) => this.mute.call(this,e))
 		document.getElementById("bc-hide").addEventListener('click', (e) => this.hide.call(this,e))
 		document.getElementById("bc-camera").addEventListener('click', (e) => this.camera.call(this,e))
 		document.getElementById("bc-expand").addEventListener('click', (e) => this.pip.call(this,e))
+		document.getElementById("remote-scene").addEventListener('touchstart', (e) => this.pip.call(this,e))
 		document.getElementById("bc-pip").addEventListener('click', (e) => this.pip.call(this,e))
-		document.getElementById("bc-cog").addEventListener('click', (e) => this.settings.call(this,e))
 		document.getElementById("bc-format").addEventListener('click', (e) => this.format.call(this,e))
-
+		// document.getElementById("bc-cog").addEventListener('click', (e) => this.settings.call(this,e))
 		// this.root.addEventListener('click',(e) => this.play.call(this,e))
-
-
 	}
 
 	addCallListeners(call){
