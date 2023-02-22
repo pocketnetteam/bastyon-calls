@@ -349,7 +349,7 @@ class BastyonCalls extends EventEmitter {
 						this.root.style.cursor = 'grabbing'
 						this.root.style.bottom = 'initial'
 						this.root.style.zIndex = 10000000;
-						event.stopPropagation()
+
 						 let moveAt = (pageX, pageY) =>{
 							this.root.style.left = pageX - this.root.offsetWidth / 2 + 'px';
 							this.root.style.top = pageY - this.root.offsetHeight / 2 + 'px';
@@ -367,7 +367,14 @@ class BastyonCalls extends EventEmitter {
 						this.root.onmouseup = (event) => {
 							document.removeEventListener('mousemove', onMouseMove);
 							this.root.style.cursor = 'grab'
+							console.log('mouse up')
 						};
+						this.root.ontouchend  = (event) => {
+							document.removeEventListener('mousemove', onMouseMove);
+							this.root.style.cursor = 'grab'
+							console.log('touch end')
+						};
+						event.stopPropagation()
 
 					};
 
@@ -607,7 +614,8 @@ class BastyonCalls extends EventEmitter {
 			this.root.classList.add('middle')
 		}
 	}
-	pip() {
+	pip(e) {
+		console.log('pip',e)
 		if (this.root.classList.contains('middle')) {
 			this.root.classList.remove('middle')
 			this.root.classList.add('minified')
@@ -740,6 +748,7 @@ class BastyonCalls extends EventEmitter {
 		document.getElementById("bc-hide").addEventListener('click', (e) => this.hide.call(this,e))
 		document.getElementById("bc-camera").addEventListener('click', (e) => this.camera.call(this,e))
 		document.getElementById("bc-expand").addEventListener('click', (e) => this.pip.call(this,e))
+		document.getElementById("remote-scene").addEventListener('touchstart', (e) => this.pip.call(this,e))
 		document.getElementById("bc-pip").addEventListener('click', (e) => this.pip.call(this,e))
 		document.getElementById("bc-format").addEventListener('click', (e) => this.format.call(this,e))
 		// document.getElementById("bc-cog").addEventListener('click', (e) => this.settings.call(this,e))
