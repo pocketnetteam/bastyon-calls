@@ -370,15 +370,16 @@ class BastyonCalls extends EventEmitter {
 						this.root.onmouseup = (event) => {
 							document.removeEventListener('mousemove', onMouseMove);
 							this.root.style.cursor = 'grab'
-							console.log('mouse up')
+							this.root.onmouseup
+							this.root.onmouseup = null
 						};
-						this.root.ontouchend  = (event) => {
+						this.root.ontouchend = (event) => {
 							if (!event.target.classList.contains('bc-btn')) {
 								event.preventDefault()
 							}
 							document.removeEventListener('mousemove', onMouseMove);
 							this.root.style.cursor = 'grab'
-							console.log('touch end')
+							this.root.ontouchend = null
 						};
 						event.stopPropagation()
 
