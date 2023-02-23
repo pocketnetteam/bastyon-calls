@@ -4,7 +4,43 @@ $middle-height: 80vh
 
 $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Arial, sans-serif
 
+@keyframes callPulse
+  0%
+    opacity: 1
+  50%
+    opacity: 0
+  100%
+    opacity: 1
+
 #bc-root
+
+  button
+    outline: none
+    position: relative
+    -webkit-tap-highlight-color: transparent
+  button:after
+    content: ""
+    display: block
+    position: absolute
+    border-radius: 4em
+    left: 0
+    top: 0
+    width: 100%
+    height: 100%
+    opacity: 0
+    transition: all 0.5s
+    box-shadow: 0 0 10px 40px rgba(var(--neutral-grad-2), .4)
+
+
+  button:active:after
+    box-shadow: 0 0 0 0 rgba(var(--neutral-grad-2), .4)
+    position: absolute
+    border-radius: 4em
+    left: 0
+    top: 0
+    opacity: 1
+    transition: 0s
+    
   &.full
     position: fixed !important
     z-index: 300000
@@ -494,39 +530,3 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
             width: 400px
 
 
-@keyframes callPulse
-  0%
-    opacity: 1
-  50%
-    opacity: 0
-  100%
-    opacity: 1
-
-
-
-button
-  outline: none
-  position: relative
-  -webkit-tap-highlight-color: transparent
-button:after
-  content: ""
-  display: block
-  position: absolute
-  border-radius: 4em
-  left: 0
-  top: 0
-  width: 100%
-  height: 100%
-  opacity: 0
-  transition: all 0.5s
-  box-shadow: 0 0 10px 40px rgba(var(--neutral-grad-2), .4)
-
-
-button:active:after
-  box-shadow: 0 0 0 0 rgba(var(--neutral-grad-2), .4)
-  position: absolute
-  border-radius: 4em
-  left: 0
-  top: 0
-  opacity: 1
-  transition: 0s
