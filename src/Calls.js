@@ -370,7 +370,6 @@ class BastyonCalls extends EventEmitter {
 						this.root.onmouseup = (event) => {
 							document.removeEventListener('mousemove', onMouseMove);
 							this.root.style.cursor = 'grab'
-							this.root.onmouseup
 							this.root.onmouseup = null
 						};
 						this.root.ontouchend = (event) => {
@@ -864,8 +863,6 @@ class BastyonCalls extends EventEmitter {
 					return
 				}
 
-				console.log("this.activeCall = null")
-
 				this.signal.pause()
 				this.renderTemplates.clearInterface()
 				this.activeCall = null
@@ -1024,6 +1021,10 @@ class BastyonCalls extends EventEmitter {
 							}
 						});
 						resolve()
+
+						for(let track of stream.getTracks()) {
+							track.stop()
+						}
 						console.log('resolve', stream)
 					} catch (e) {
 						console.log('reject',e)
