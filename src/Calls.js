@@ -86,7 +86,7 @@ class BastyonCalls extends EventEmitter {
 					<div class="status">connecting...</div>
 				</div>
 				<div class="bc-video minified">
-					<video id="local" muted="true" pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
+					<video id="local" muted pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
 				</div>
 			</div>
 			<div class="bc-controls">
@@ -347,42 +347,45 @@ class BastyonCalls extends EventEmitter {
 				let track = this?.activeCall?.remoteStream.getVideoTracks()[0]
 				let onMouseMove
 				if(this.root.classList.contains('minified')){
-					this.root.onmousedown = (event) => {
-						if (event.target.classList.contains('bc-btn')) return
-						this.root.style.cursor = 'grabbing'
-						this.root.style.bottom = 'initial'
-						this.root.style.zIndex = 10000000;
-
-						 let moveAt = (pageX, pageY) =>{
-							this.root.style.left = pageX - this.root.offsetWidth / 2 + 'px';
-							this.root.style.top = pageY - this.root.offsetHeight / 2 + 'px';
-						}
-
-						// move our absolutely positioned container under the pointer
-						moveAt(event.pageX, event.pageY);
-
-						onMouseMove = (event) =>{
-							moveAt(event.pageX, event.pageY);
-						}
-
-						document.addEventListener('mousemove', onMouseMove);
-
-						this.root.onmouseup = (event) => {
-							document.removeEventListener('mousemove', onMouseMove);
-							this.root.style.cursor = 'grab'
-							this.root.onmouseup = null
-						};
-						this.root.ontouchend = (event) => {
-							if (!event.target.classList.contains('bc-btn')) {
-								event.preventDefault()
-							}
-							document.removeEventListener('mousemove', onMouseMove);
-							this.root.style.cursor = 'grab'
-							this.root.ontouchend = null
-						};
-						event.stopPropagation()
-
-					};
+					// this.root.onmousedown = (event) => {
+					// 	if (event.target.classList.contains('bc-btn')) return
+					// 	this.root.style.cursor = 'grabbing'
+					// 	this.root.style.bottom = 'initial'
+					// 	this.root.style.zIndex = 10000000;
+					//
+					// 	let shiftX = event.clientX - this.root.getBoundingClientRect().left;
+					// 	let shiftY = event.clientY - this.root.getBoundingClientRect().top;
+					//
+					// 	 let moveAt = (pageX, pageY) =>{
+					// 		this.root.style.left = pageX + shiftX - this.root.offsetWidth / 2 + 'px';
+					// 		this.root.style.top = pageY + shiftY - this.root.offsetHeight / 2 + 'px';
+					// 	}
+					//
+					// 	// move our absolutely positioned container under the pointer
+					// 	moveAt(event.pageX, event.pageY);
+					//
+					// 	onMouseMove = (event) =>{
+					// 		moveAt(event.pageX, event.pageY);
+					// 	}
+					//
+					// 	document.addEventListener('mousemove', onMouseMove);
+					//
+					// 	this.root.onmouseup = (event) => {
+					// 		document.removeEventListener('mousemove', onMouseMove);
+					// 		this.root.style.cursor = 'grab'
+					// 		this.root.onmouseup = null
+					// 	};
+					// 	this.root.ontouchend = (event) => {
+					// 		if (!event.target.classList.contains('bc-btn')) {
+					// 			event.preventDefault()
+					// 		}
+					// 		document.removeEventListener('mousemove', onMouseMove);
+					// 		this.root.style.cursor = 'grab'
+					// 		this.root.ontouchend = null
+					// 	};
+					// 	event.stopPropagation()
+					//
+					// };
 
 					
 					let aspectRatio = track.getSettings().aspectRatio
@@ -395,9 +398,9 @@ class BastyonCalls extends EventEmitter {
 						}
 					}
 				} else {
-					document.removeEventListener('mousemove', onMouseMove);
-					this.root.style = {}
-					this.root.onmousedown = null
+					// document.removeEventListener('mousemove', onMouseMove);
+					// this.root.style = {}
+					// this.root.onmousedown = null
 				}
 			}
 		}).bind(this),300)
@@ -859,7 +862,7 @@ class BastyonCalls extends EventEmitter {
 						this.renderTemplates.clearInterface()
 						this.activeCall = null
 						// console.log('time out',this.activeCall)
-					}, 3000)
+					}, 1000)
 					return
 				}
 
