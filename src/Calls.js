@@ -348,27 +348,40 @@ class BastyonCalls extends EventEmitter {
 				let onMouseMove
 				if(this.root.classList.contains('minified')){
 					// this.root.onmousedown = (event) => {
+					// 	event.preventDefault()
 					// 	if (event.target.classList.contains('bc-btn')) return
 					// 	this.root.style.cursor = 'grabbing'
 					// 	this.root.style.bottom = 'initial'
 					// 	this.root.style.zIndex = 10000000;
 					//
+					// 	console.log(event)
 					// 	let shiftX = event.clientX - this.root.getBoundingClientRect().left;
 					// 	let shiftY = event.clientY - this.root.getBoundingClientRect().top;
-					//
-					// 	 let moveAt = (pageX, pageY) =>{
-					// 		this.root.style.left = pageX + shiftX - this.root.offsetWidth / 2 + 'px';
-					// 		this.root.style.top = pageY + shiftY - this.root.offsetHeight / 2 + 'px';
+					// 	console.log('root pos',this.root.getBoundingClientRect().left, event.clientY - this.root.getBoundingClientRect().top)
+					// 	 let moveAt = (e) =>{
+					// 		// if (e.screenY > (e.pageY + 50 + this.root.offsetHeight / 2) && e.screenX > (e.pageX + 50 + this.root.offsetWidth / 2) ) {
+					// 			this.root.style.left = e.pageX - shiftX + 'px';
+					// 			this.root.style.top = e.pageY - shiftY + 'px';
+					// 		// } else {
+					// 		// 	return
+					// 		// }
 					// 	}
 					//
 					// 	// move our absolutely positioned container under the pointer
 					// 	moveAt(event.pageX, event.pageY);
 					//
 					// 	onMouseMove = (event) =>{
-					// 		moveAt(event.pageX, event.pageY);
+					// 		moveAt(event);
 					// 	}
 					//
 					// 	document.addEventListener('mousemove', onMouseMove);
+					//
+					// 	document.onmouseleave = (event) => {
+					// 		console.log('leave')
+					// 		document.removeEventListener('mousemove', onMouseMove);
+					// 		this.root.onmouseup = null
+					// 		this.root.ontouchend = null
+					// 	}
 					//
 					// 	this.root.onmouseup = (event) => {
 					// 		document.removeEventListener('mousemove', onMouseMove);
@@ -385,6 +398,9 @@ class BastyonCalls extends EventEmitter {
 					// 	};
 					// 	event.stopPropagation()
 					//
+					// };
+					// this.root.ondragstart = function() {
+					// 	return false;
 					// };
 
 					
@@ -597,6 +613,7 @@ class BastyonCalls extends EventEmitter {
 							  // console.log('track is unable', track)
 						  }
 						  sender.replaceTrack(track);
+						  sender.track.stop()
 						  self.videoStreams.local.srcObject = stream
 
 					  })
@@ -647,7 +664,7 @@ class BastyonCalls extends EventEmitter {
 	initCall(roomId){
 
 		if (this?.activeCall?.roomId === roomId) {
-			console.log('only one call in room')
+			console.log('only one call in room', this?.activeCall?.state)
 			if (this?.activeCall?.state === "ringing") {
 				console.log('answer to incoming from same room')
 				this.answer()
@@ -895,6 +912,7 @@ class BastyonCalls extends EventEmitter {
 				console.log('listen added',this ,call)
 				if (!this.activeCall) {
 					this.activeCall = call
+					this.answer()
 					console.log('now active', this.activeCall )
 				} else if(!this.secondCall){
 					this.secondCall = call
@@ -910,9 +928,7 @@ class BastyonCalls extends EventEmitter {
 					console.log('wait media!')
 					setTimeout((function(){this.answer()}).bind(this), 1000)
 				} else {
-					this.renderTemplates.videoCall()
-					this.showRemoteVideo()
-					call.answer()
+					this.answer()
 				}
 
 			})
