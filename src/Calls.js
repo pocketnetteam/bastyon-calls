@@ -86,7 +86,7 @@ class BastyonCalls extends EventEmitter {
 					<div class="status">connecting...</div>
 				</div>
 				<div class="bc-video minified">
-					<video id="local" muted="true" pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
+					<video id="local" muted pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
 				</div>
 			</div>
 			<div class="bc-controls">
@@ -347,42 +347,61 @@ class BastyonCalls extends EventEmitter {
 				let track = this?.activeCall?.remoteStream.getVideoTracks()[0]
 				let onMouseMove
 				if(this.root.classList.contains('minified')){
-					this.root.onmousedown = (event) => {
-						if (event.target.classList.contains('bc-btn')) return
-						this.root.style.cursor = 'grabbing'
-						this.root.style.bottom = 'initial'
-						this.root.style.zIndex = 10000000;
-
-						 let moveAt = (pageX, pageY) =>{
-							this.root.style.left = pageX - this.root.offsetWidth / 2 + 'px';
-							this.root.style.top = pageY - this.root.offsetHeight / 2 + 'px';
-						}
-
-						// move our absolutely positioned container under the pointer
-						moveAt(event.pageX, event.pageY);
-
-						onMouseMove = (event) =>{
-							moveAt(event.pageX, event.pageY);
-						}
-
-						document.addEventListener('mousemove', onMouseMove);
-
-						this.root.onmouseup = (event) => {
-							document.removeEventListener('mousemove', onMouseMove);
-							this.root.style.cursor = 'grab'
-							this.root.onmouseup = null
-						};
-						this.root.ontouchend = (event) => {
-							if (!event.target.classList.contains('bc-btn')) {
-								event.preventDefault()
-							}
-							document.removeEventListener('mousemove', onMouseMove);
-							this.root.style.cursor = 'grab'
-							this.root.ontouchend = null
-						};
-						event.stopPropagation()
-
-					};
+					// this.root.onmousedown = (event) => {
+					// 	event.preventDefault()
+					// 	if (event.target.classList.contains('bc-btn')) return
+					// 	this.root.style.cursor = 'grabbing'
+					// 	this.root.style.bottom = 'initial'
+					// 	this.root.style.zIndex = 10000000;
+					//
+					// 	console.log(event)
+					// 	let shiftX = event.clientX - this.root.getBoundingClientRect().left;
+					// 	let shiftY = event.clientY - this.root.getBoundingClientRect().top;
+					// 	console.log('root pos',this.root.getBoundingClientRect().left, event.clientY - this.root.getBoundingClientRect().top)
+					// 	 let moveAt = (e) =>{
+					// 		// if (e.screenY > (e.pageY + 50 + this.root.offsetHeight / 2) && e.screenX > (e.pageX + 50 + this.root.offsetWidth / 2) ) {
+					// 			this.root.style.left = e.pageX - shiftX + 'px';
+					// 			this.root.style.top = e.pageY - shiftY + 'px';
+					// 		// } else {
+					// 		// 	return
+					// 		// }
+					// 	}
+					//
+					// 	// move our absolutely positioned container under the pointer
+					// 	moveAt(event.pageX, event.pageY);
+					//
+					// 	onMouseMove = (event) =>{
+					// 		moveAt(event);
+					// 	}
+					//
+					// 	document.addEventListener('mousemove', onMouseMove);
+					//
+					// 	document.onmouseleave = (event) => {
+					// 		console.log('leave')
+					// 		document.removeEventListener('mousemove', onMouseMove);
+					// 		this.root.onmouseup = null
+					// 		this.root.ontouchend = null
+					// 	}
+					//
+					// 	this.root.onmouseup = (event) => {
+					// 		document.removeEventListener('mousemove', onMouseMove);
+					// 		this.root.style.cursor = 'grab'
+					// 		this.root.onmouseup = null
+					// 	};
+					// 	this.root.ontouchend = (event) => {
+					// 		if (!event.target.classList.contains('bc-btn')) {
+					// 			event.preventDefault()
+					// 		}
+					// 		document.removeEventListener('mousemove', onMouseMove);
+					// 		this.root.style.cursor = 'grab'
+					// 		this.root.ontouchend = null
+					// 	};
+					// 	event.stopPropagation()
+					//
+					// };
+					// this.root.ondragstart = function() {
+					// 	return false;
+					// };
 
 					
 					let aspectRatio = track.getSettings().aspectRatio
@@ -395,9 +414,9 @@ class BastyonCalls extends EventEmitter {
 						}
 					}
 				} else {
-					document.removeEventListener('mousemove', onMouseMove);
-					this.root.style = {}
-					this.root.onmousedown = null
+					// document.removeEventListener('mousemove', onMouseMove);
+					// this.root.style = {}
+					// this.root.onmousedown = null
 				}
 			}
 		}).bind(this),300)
@@ -594,6 +613,7 @@ class BastyonCalls extends EventEmitter {
 							  // console.log('track is unable', track)
 						  }
 						  sender.replaceTrack(track);
+						  sender.track.stop()
 						  self.videoStreams.local.srcObject = stream
 
 					  })
@@ -644,7 +664,7 @@ class BastyonCalls extends EventEmitter {
 	initCall(roomId){
 
 		if (this?.activeCall?.roomId === roomId) {
-			console.log('only one call in room')
+			console.log('only one call in room', this?.activeCall?.state)
 			if (this?.activeCall?.state === "ringing") {
 				console.log('answer to incoming from same room')
 				this.answer()
@@ -859,7 +879,7 @@ class BastyonCalls extends EventEmitter {
 						this.renderTemplates.clearInterface()
 						this.activeCall = null
 						// console.log('time out',this.activeCall)
-					}, 3000)
+					}, 1000)
 					return
 				}
 
@@ -892,6 +912,7 @@ class BastyonCalls extends EventEmitter {
 				console.log('listen added',this ,call)
 				if (!this.activeCall) {
 					this.activeCall = call
+					this.answer()
 					console.log('now active', this.activeCall )
 				} else if(!this.secondCall){
 					this.secondCall = call
@@ -907,9 +928,7 @@ class BastyonCalls extends EventEmitter {
 					console.log('wait media!')
 					setTimeout((function(){this.answer()}).bind(this), 1000)
 				} else {
-					this.renderTemplates.videoCall()
-					this.showRemoteVideo()
-					call.answer()
+					this.answer()
 				}
 
 			})
