@@ -968,7 +968,12 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	setBlinking() {
-		this.title = document.querySelector('title').innerHTML
+
+		var titleElement = document.querySelector('title')
+
+		if(!titleElement) return
+
+		this.title = titleElement.innerHTML
 		let currentTitle = this.title
 		this.blinkInterval = setInterval((function() {
 	
@@ -977,14 +982,22 @@ class BastyonCalls extends EventEmitter {
 			} else {
 				currentTitle = this.title
 			}
-			document.querySelector('title').innerHTML = currentTitle
+
+			titleElement.innerHTML = currentTitle
+
 		}).bind(this),1000)
 	}
 
 	clearBlinking() {
+
+		var titleElement = document.querySelector('title')
+
+		if(!titleElement) return
+
 		clearInterval(this.blinkInterval)
 		this.blinkInterval = null
-		document.querySelector('title').innerHTML = this.title
+		
+		titleElement.innerHTML = this.title
 
 	}
 
