@@ -27,6 +27,7 @@ class BastyonCalls extends EventEmitter {
 	timeInterval = null
 	title = null
 	blinkInterval = null
+	defaultPositions = [{x: 100, y: 100},{}]
 	destroyed = false
 	templates = {
 		incomingCall : function(){
@@ -346,62 +347,77 @@ class BastyonCalls extends EventEmitter {
 			if(this?.activeCall?.remoteStream) {
 				let track = this?.activeCall?.remoteStream.getVideoTracks()[0]
 				let onMouseMove
+				let moveAt
 				if(this.root.classList.contains('minified')){
-					// this.root.onmousedown = (event) => {
-					// 	event.preventDefault()
-					// 	if (event.target.classList.contains('bc-btn')) return
-					// 	this.root.style.cursor = 'grabbing'
-					// 	this.root.style.bottom = 'initial'
-					// 	this.root.style.zIndex = 10000000;
-					//
-					// 	console.log(event)
-					// 	let shiftX = event.clientX - this.root.getBoundingClientRect().left;
-					// 	let shiftY = event.clientY - this.root.getBoundingClientRect().top;
-					// 	console.log('root pos',this.root.getBoundingClientRect().left, event.clientY - this.root.getBoundingClientRect().top)
-					// 	 let moveAt = (e) =>{
-					// 		// if (e.screenY > (e.pageY + 50 + this.root.offsetHeight / 2) && e.screenX > (e.pageX + 50 + this.root.offsetWidth / 2) ) {
-					// 			this.root.style.left = e.pageX - shiftX + 'px';
-					// 			this.root.style.top = e.pageY - shiftY + 'px';
-					// 		// } else {
-					// 		// 	return
-					// 		// }
-					// 	}
-					//
-					// 	// move our absolutely positioned container under the pointer
-					// 	moveAt(event.pageX, event.pageY);
-					//
-					// 	onMouseMove = (event) =>{
-					// 		moveAt(event);
-					// 	}
-					//
-					// 	document.addEventListener('mousemove', onMouseMove);
-					//
-					// 	document.onmouseleave = (event) => {
-					// 		console.log('leave')
-					// 		document.removeEventListener('mousemove', onMouseMove);
-					// 		this.root.onmouseup = null
-					// 		this.root.ontouchend = null
-					// 	}
-					//
-					// 	this.root.onmouseup = (event) => {
-					// 		document.removeEventListener('mousemove', onMouseMove);
-					// 		this.root.style.cursor = 'grab'
-					// 		this.root.onmouseup = null
-					// 	};
-					// 	this.root.ontouchend = (event) => {
-					// 		if (!event.target.classList.contains('bc-btn')) {
-					// 			event.preventDefault()
-					// 		}
-					// 		document.removeEventListener('mousemove', onMouseMove);
-					// 		this.root.style.cursor = 'grab'
-					// 		this.root.ontouchend = null
-					// 	};
-					// 	event.stopPropagation()
-					//
-					// };
-					// this.root.ondragstart = function() {
-					// 	return false;
-					// };
+					this.root.onmousedown = (event) => {
+						console.log('mouse down')
+						event.preventDefault()
+						if (event.target.classList.contains('bc-btn')) return
+						let shiftLeft = event.clientX - this.root.getBoundingClientRect().left;
+						let shiftTop = event.clientY - this.root.getBoundingClientRect().top;
+						this.root.style.cursor = 'grabbing'
+						this.root.style.zIndex = 10000000;
+						this.root.style.bottom = 'inherit'
+						document.onmousemove = (e) => {
+							if (e.pageY) {
+								if(((window.innerHeight - this.root.getBoundingClientRect().bottom) > 10) && ((e.clientY - shiftTop) > 10)) {
+										if ((window.innerHeight - this.root.offsetHeight - 11) >= e.clientY - shiftTop){
+											this.root.style.top = e.clientY - shiftTop + 'px';
+										}
+								} else if(((window.innerHeight - this.root.getBoundingClientRect().bottom) <= 10) && (e.movementY < 0)) {
+										this.root.style.top = window.innerHeight - this.root.offsetHeight - 11 +'px';
+								}
+								else {
+									console.log('y out',window.innerHeight - this.root.getBoundingClientRect().bottom , e.clientY - shiftTop)
+								}
+							} else {
+								return
+							}
+							if (e.pageX) {
+								if (((0 < e.clientX - shiftLeft) && (e.clientX - shiftLeft < 10)) && e.movementX > 0) {
+									this.root.style.left = e.pageX - shiftLeft + 'px';
+								} else if((e.clientX - shiftLeft > 10) && ((document.body.clientWidth - this.root.getBoundingClientRect().left - this.root.offsetWidth) > 70)){
+									if ((document.body.clientWidth - this.root.offsetWidth - 71) >= (e.pageX - shiftLeft)) {
+										this.root.style.left = e.pageX - shiftLeft + 'px';
+									}
+								} else if(((document.body.clientWidth - this.root.getBoundingClientRect().left - this.root.offsetWidth) <= 70) && e.movementX < 0){
+										this.root.style.left = document.body.clientWidth - this.root.offsetWidth - 71 + 'px';
+								} else {
+									console.log('x out',document.body.clientWidth - this.root.getBoundingClientRect().left - this.root.offsetWidth)
+								}
+							} else {
+								return
+							}
+						}
+
+						document.onmouseleave = (event) => {
+							event.preventDefault()
+							console.log('leave')
+							document.onmousemove = null
+							this.root.onmouseup = null
+							this.root.ontouchend = null
+						}
+
+						document.onmouseup = (event) => {
+							console.log('mouse up')
+							document.onmousemove = null
+							this.root.style.cursor = 'grab'
+							document.onmouseup = null
+						};
+						document.ontouchend = (event) => {
+							if (!event.target.classList.contains('bc-btn')) {
+								event.preventDefault()
+							}
+							document.onmousemove = null
+							this.root.style.cursor = 'grab'
+							document.ontouchend = null
+						};
+						event.stopPropagation()
+
+					};
+					this.root.ondragstart = function() {
+						return false;
+					};
 
 					
 					let aspectRatio = track.getSettings().aspectRatio
@@ -414,9 +430,9 @@ class BastyonCalls extends EventEmitter {
 						}
 					}
 				} else {
-					// document.removeEventListener('mousemove', onMouseMove);
-					// this.root.style = {}
-					// this.root.onmousedown = null
+					document.removeEventListener('mousemove', onMouseMove);
+					this.root.style = {}
+					this.root.onmousedown = null
 				}
 			}
 		}).bind(this),300)
@@ -768,6 +784,7 @@ class BastyonCalls extends EventEmitter {
 					this.activeCall.setLocalVideoElement(this.videoStreams.local)
 					this.activeCall.setRemoteVideoElement(this.videoStreams.remote)
 					this.cameraCount()
+					this.root.style = {}
 					this.addVideoInterfaceListeners()
 				} catch (e) {
 					// console.log('init interface error',e)
