@@ -985,7 +985,8 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	setBlinking() {
-		this.title = document.querySelector('title').innerHTML
+		this.title = document.querySelector('title')?.innerHTML
+		if (!this.title) return
 		let currentTitle = this.title
 		this.blinkInterval = setInterval((function() {
 	
@@ -1001,7 +1002,7 @@ class BastyonCalls extends EventEmitter {
 	clearBlinking() {
 		clearInterval(this.blinkInterval)
 		this.blinkInterval = null
-		document.querySelector('title').innerHTML = this.title
+		document.querySelector('title')?.innerHTML ? document.querySelector('title').innerHTML = this.title : null
 
 	}
 
