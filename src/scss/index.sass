@@ -121,7 +121,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
           height: auto
           max-height: initial !important
           padding-bottom: 0
-          transition: all .3s ease
+          transition: width, height .3s ease
           &.vertical
             max-width: 250px
             .active
@@ -131,7 +131,6 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
         &.minified
           display: none
         &.active
-          transition: all .3s ease
           height: 100%
           max-width: 350px
           &.novid
@@ -139,6 +138,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
             padding: 1em
             max-width: 250px
           video
+            transition: all .3s ease
             //height: 20vw
             width: auto
         //max-height: 250px
