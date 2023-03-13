@@ -27,7 +27,6 @@ class BastyonCalls extends EventEmitter {
 	timeInterval = null
 	title = null
 	blinkInterval = null
-	defaultPositions = [{x: 100, y: 100},{}]
 	destroyed = false
 	templates = {
 		incomingCall : function(){
@@ -132,7 +131,6 @@ class BastyonCalls extends EventEmitter {
 		clearInterface : () => {
 			if(!this.root) return
 
-			console.log('clearInterface')
 			this.root.classList.remove('active')
 			this.cancelMini()
 			this.root.classList.remove('middle')
@@ -581,7 +579,6 @@ class BastyonCalls extends EventEmitter {
 		}
 	}
 	pip(e) {
-		console.log('pip')
 		if (this.root.classList.contains('middle')) {
 			this.root.classList.remove('middle')
 			this.toMini()
@@ -1013,8 +1010,12 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	setBlinking() {
-		this.title = document.querySelector('title')?.innerHTML
-		if (!this.title) return
+
+		var titleElement = document.querySelector('title')
+
+		if(!titleElement) return
+
+		this.title = titleElement.innerHTML
 		let currentTitle = this.title
 		this.blinkInterval = setInterval((function() {
 	
@@ -1023,18 +1024,24 @@ class BastyonCalls extends EventEmitter {
 			} else {
 				currentTitle = this.title
 			}
-			document.querySelector('title').innerHTML = currentTitle
+
+			titleElement.innerHTML = currentTitle
+
 		}).bind(this),1000)
 	}
 
 	clearBlinking() {
+
+		var titleElement = document.querySelector('title')
+
+		if(!titleElement) return
+
 		clearInterval(this.blinkInterval)
 		this.blinkInterval = null
-		document.querySelector('title')?.innerHTML ? document.querySelector('title').innerHTML = this.title : null
+
+		titleElement.innerHTML = this.title
 
 	}
-
-
 
 
 	initCordovaPermisions() {
