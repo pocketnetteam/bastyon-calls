@@ -618,10 +618,10 @@ class BastyonCalls extends EventEmitter {
 					if (e.pageY) {
 						if(((window.innerHeight - this.root.getBoundingClientRect().bottom) > 10) && ((e.clientY - shiftTop) > 10)) {
 							if ((window.innerHeight - this.root.offsetHeight - 11) >= e.clientY - shiftTop){
-								this.root.style.top = e.clientY - shiftTop + 'px';
+								this.root.style.top = this.getPercents('height',e.clientY - shiftTop);
 							}
 						} else if(((window.innerHeight - this.root.getBoundingClientRect().bottom) <= 10) && (e.movementY < 0)) {
-							this.root.style.top = window.innerHeight - this.root.offsetHeight - 11 +'px';
+							this.root.style.top = this.getPercents('height',window.innerHeight - this.root.offsetHeight - 11);
 						}
 						else {
 							console.log('y out',window.innerHeight - this.root.getBoundingClientRect().bottom , e.clientY - shiftTop)
@@ -634,10 +634,10 @@ class BastyonCalls extends EventEmitter {
 							this.root.style.left = e.pageX - shiftLeft + 'px';
 						} else if((e.clientX - shiftLeft > 10) && ((document.body.clientWidth - this.root.getBoundingClientRect().left - this.root.offsetWidth) > 70)){
 							if ((document.body.clientWidth - this.root.offsetWidth - 71) >= (e.pageX - shiftLeft)) {
-								this.root.style.left = e.pageX - shiftLeft + 'px';
+								this.root.style.left = this.getPercents('width', e.pageX - shiftLeft)
 							}
 						} else if(((document.body.clientWidth - this.root.getBoundingClientRect().left - this.root.offsetWidth) <= 70) && e.movementX < 0){
-							this.root.style.left = document.body.clientWidth - this.root.offsetWidth - 71 + 'px';
+							this.root.style.left = this.root.style.left = this.getPercents('width', document.body.clientWidth - this.root.offsetWidth - 71)
 						} else {
 							console.log('x out',document.body.clientWidth - this.root.getBoundingClientRect().left - this.root.offsetWidth)
 						}
@@ -662,7 +662,7 @@ class BastyonCalls extends EventEmitter {
 					document.onmouseup = null
 				};
 				document.ontouchend = (event) => {
-					localStorage.setItem('callPositionSettings', JSON.stringify({left:this.root.style.left ,top: this.root.style.top}))
+					localStorage.setItem('callPositionSettings', JSON.stringify({left:this.root.style.left ,top:this.root.style.top}))
 					if (!event.target.classList.contains('bc-btn')) {
 						event.preventDefault()
 					}
@@ -682,6 +682,19 @@ class BastyonCalls extends EventEmitter {
 				this.root.style.top = pos.top
 				this.root.style.left = pos.left
 			}
+	}
+
+	getPercents(type, value) {
+		let res
+		switch(type) {
+			case 'width':
+				res = parseInt(value, 10) / window.innerWidth
+				break
+			case 'height':
+				res = parseInt(value, 10) / window.innerHeight
+				break
+		}
+		return `${res * 100 + '%'}`
 	}
 
 	cancelMini() {
