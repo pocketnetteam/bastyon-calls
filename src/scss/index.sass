@@ -12,6 +12,16 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
   100%
     opacity: 1
 
+@keyframes answerPulse
+  from
+    -moz-box-shadow: 0 0 0 0 rgba(var(--color-bg-ac-bright), .4)
+    box-shadow: 0 0 0 0 rgba(var(--color-bg-ac-bright), .4)
+  50%
+    -moz-box-shadow: 0 0 0 0.6em rgba(var(--color-bg-ac-bright), .4)
+    box-shadow: 0 0 0 0.6em rgba(var(--color-bg-ac-bright), .4)
+  to
+    -moz-box-shadow: 0 0 0 0 rgba(var(--color-bg-ac-bright), .4)
+    box-shadow: 0 0 0 0 rgba(var(--color-bg-ac-bright), .4)
 #bc-root
 
   button
@@ -281,6 +291,12 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
         cursor: pointer
       .bc-answer
         background: linear-gradient(90deg, #495AFF 0%, #0ACFFE 100%), #00A4FF
+        animation: answerPulse .8s infinite
+        box-shadow: 0 0 0 0 #00A4FF
+        transition: box-shadow 0.3s ease
+        &:hover
+          animation: none
+          filter: brightness(90%)
         & i
           transform: rotate(90deg)
       .bc-decline
