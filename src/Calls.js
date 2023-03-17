@@ -29,15 +29,15 @@ class BastyonCalls extends EventEmitter {
 	blinkInterval = null
 	destroyed = false
 	templates = {
-		incomingCall : function(){
+		incomingCall : function(call){
 			return `
 			<div class="bc-incoming-call">
 				<div class="user">
 					<div class="avatar">
-						${this.getAvatar()}
+						${this.getAvatar(call)}
 					</div>
 					<div class="title">
-						<div class="name">${this.activeCall.initiator.source.name}</div>
+						<div class="name">${call.initiator.source.name}</div>
 						<div class="description">${this.options.getWithLocale('incomingCall')}</div>
 					</div>
 				</div>
@@ -52,7 +52,7 @@ class BastyonCalls extends EventEmitter {
 			return `	
 			<div class="bc-ended-call">
 				<div class="avatar">
-						${this.getAvatar()}
+						${this.getAvatar(call)}
 				</div>
 				<div class="name">${this.activeCall.initiator.source.name}</div>
 				<div class="description">${this.options.getWithLocale('endedCall')}</div>
@@ -113,7 +113,11 @@ class BastyonCalls extends EventEmitter {
 
 			if(!this.notify) return
 
-			this.notify.innerHTML = this.templates['incomingCall']?.call(this) || ''
+			if (this?.activeCall?.state === 'ringing' && this?.activeCall?.callId !== call.callId) {
+				call.reject('busy')
+				return;
+			}
+			this.notify.innerHTML = this.templates['incomingCall']?.call(this, call) || ''
 			this.initCallInterface('incomingCall', call)
 		},
 		clearNotify : () => {
@@ -198,15 +202,11 @@ class BastyonCalls extends EventEmitter {
 		
 		this.client.on("Call.incoming", async (call) => {
 
-			console.log('call.state', call.state)
-
 			if (call.state == 'fledgling'){
 				await pretry(() => {
 					return call.state != 'fledgling'
 				}, 50)
 			}
-
-			console.log('call.state2', call.state)
 
 			if (call.hangupParty || call.hangupReason) {
 				return
@@ -224,25 +224,45 @@ class BastyonCalls extends EventEmitter {
 			let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
 			let initiator = members[ initiatorId ]
 			let user = members[this.client.credentials.userId]
-
+			// console.log('new call ', call)
 			call.initiator = initiator
 			call.user = user
 			this.options.getUserInfo(initiator.userId).then((res) => {
+				// console.log('user opt', res)
 				if (call.hangupParty || call.hangupReason) {
 					return
 				}
 				 initiator.source = res[0] || res
 				 this.addCallListeners(call)
 				 if (!this.activeCall) {
+					 // console.log('no active')
 					 this.activeCall = call
 				 } else if(!this.secondCall){
+					 // console.log('no second')
 					 this.secondCall = call
-					 // console.log('nwe call in queue', call)
+					 if (this.activeCall.state !== 'ringing') {
+						 let a = new Audio('js/lib')
+						 a.autoplay = true
+						 a.loop = true
+
+						 this.signal = a
+
+						 this.signal.src='sounds/incoming.mp3'
+						 this.renderTemplates.incomingCall(call)
+
+						 return
+					 }
 				 } else {
-					 call.hangup('busy')
+					 // console.log('no place 1', call.state)
 					 call.reject('busy')
+					 // console.log('no place 2', call.state)
+					 call.hangup('busy')
+					 // console.log('no place 3', call.state)
+
+
 					 // console.log('all calls', this)
 				 }
+
 				let a = new Audio('js/lib')
 				a.autoplay = true
 				a.loop = true
@@ -284,28 +304,22 @@ class BastyonCalls extends EventEmitter {
 		this.initCordovaPermisions().then(() => {
 
 			try {
-				if (this.activeCall.state !== "connected" || this.activeCall.state !== "ended") {
-					
+				if (this.activeCall.state !== "connected" && this.activeCall.state !== "ended") {
 					this.activeCall.answer()
 					this.renderTemplates.clearNotify()
 					this.renderTemplates.videoCall()
-				
-					
+
 				} else {
 					this.isWaitingForConnect = true
 					this.renderTemplates.clearNotify()
 					this.activeCall.hangup()
 					setTimeout(()=> {
-
 						if (this.destroyed) return
 
 						try {
-
-
 							this.activeCall.answer()
 							this.isWaitingForConnect = false
 							this.renderTemplates.videoCall()
-
 							
 						} catch (e) {
 							console.error("Ошибка при ответе на вторую линию", e)
@@ -889,7 +903,7 @@ class BastyonCalls extends EventEmitter {
 			this.signal.src = 'sounds/hangup.mp3'
 			clearInterval(this.syncInterval)
 			this.syncInterval = null
-			// console.log('Call ended',call)
+			console.log('Call ended',call.callId)
 			if (!call) {
 				this.renderTemplates.clearNotify()
 
@@ -898,8 +912,10 @@ class BastyonCalls extends EventEmitter {
 
 			if (call.callId === this.secondCall?.callId) {
 				this.secondCall = null
-				this.renderTemplates.clearNotify()
-				// console.log('second line ended', call)
+				if (this?.activeCall?.state !== 'ringing') {
+					this.renderTemplates.clearNotify()
+				}
+				// console.log('second line ended', call.callId)
 			}
 
 			if (call.callId === this.activeCall?.callId) {
@@ -910,7 +926,7 @@ class BastyonCalls extends EventEmitter {
 				if(this.isWaitingForConnect) {
 					this.activeCall = this.secondCall
 					this.secondCall = null
-					// console.log('second line is active', this.activeCall)
+					// console.log('second line is active', this.activeCall.callId)
 					return;
 				}
 				this.renderTemplates.clearVideo()
@@ -999,7 +1015,10 @@ class BastyonCalls extends EventEmitter {
 	}
 
 
-	getAvatar() {
+	getAvatar(call) {
+		if(call?.initiator?.source?.image){
+			return `<img src="${call.initiator.source.image}"/>`
+		}
 		if(this.activeCall.initiator?.source?.image){
 			return `<img src="${this.activeCall.initiator.source.image}"/>`
 		}
