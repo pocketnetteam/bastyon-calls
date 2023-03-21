@@ -12,6 +12,8 @@ class BastyonCalls extends EventEmitter {
 		this.initTemplates(root)
 		/*this.initCordovaPermisions()*/ /// TODO
 		this.options = options
+		console.log('ss',client, matrixcs)
+		console.log('dd', matrixcs)
 	}
 
 	controls = {}
@@ -305,7 +307,7 @@ class BastyonCalls extends EventEmitter {
 
 			try {
 				if (this.activeCall.state !== "connected" && this.activeCall.state !== "ended") {
-					this.activeCall.answer()
+					this.activeCall.answer(true,true)
 					this.renderTemplates.clearNotify()
 					this.renderTemplates.videoCall()
 
@@ -317,7 +319,7 @@ class BastyonCalls extends EventEmitter {
 						if (this.destroyed) return
 
 						try {
-							this.activeCall.answer()
+							this.activeCall.answer(true, true)
 							this.isWaitingForConnect = false
 							this.renderTemplates.videoCall()
 							
@@ -712,7 +714,7 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	cancelMini() {
-		console.log('cancel mini',localStorage.getItem('callSizeSettings'), localStorage.getItem('callSizeSettings').toString() == 'mini' )
+		console.log('cancel mini',localStorage.getItem('callSizeSettings'), localStorage.getItem('callSizeSettings')?.toString() == 'mini' )
 		this.root.classList.remove('minified')
 		document.onmousemove = null
 		this.root.style = {}
@@ -734,19 +736,34 @@ class BastyonCalls extends EventEmitter {
 		return this.initCordovaPermisions().then(() => {
 			this.emit('initcall')
 
-			const call = matrixcs.createNewMatrixCall(this.client, roomId)
+			const call = this.matrixcs.createNewMatrixCall(this.client, roomId)
 
-			call.placeVideoCall(document.getElementById("remote"),document.getElementById("local")).then( (async function() {
+			call.placeVideoCall().then( (async function() {
+
 				let members = this.client.store.rooms[ call.roomId ].currentState.members
+
 				let initiatorId = Object.keys(members).filter(m => m !== this.client.credentials.userId)
+
 				let initiator = members[ initiatorId ]
+
 				let user = members[this.client.credentials.userId]
+
 
 				call.initiator = initiator
 				call.user = user
 
-				initiator.source = await this.options.getUserInfo(initiator.userId)[0]
+				this.addCallListeners(call)
+
+				// console.log('after init',this.activeCall)
+				if (!this.activeCall) {
+					this.activeCall = call
+				} else {
+					// console.log('You have active call',this.activeCall)
+					return
+				}
+
 				this.options.getUserInfo(initiator.userId).then((res) => {
+					console.log(res, initiator)
 					initiator.source = res[0] || res
 					this.signal.src='sounds/calling.mp3'
 					this.renderTemplates.videoCall()
@@ -756,14 +773,7 @@ class BastyonCalls extends EventEmitter {
 				})
 			}).bind(this))
 
-			this.addCallListeners(call)
-			// console.log('after init',this.activeCall)
-			if (!this.activeCall) {
-				this.activeCall = call
-			} else {
-				// console.log('You have active call',this.activeCall)
-				return
-			}
+
 
 			let a = new Audio('js/lib')
 			a.autoplay = true
@@ -782,7 +792,7 @@ class BastyonCalls extends EventEmitter {
 		for (var i = 2; i <= hex.length; i += 2) {
 			ch = parseInt(hex.substring(i - 2, i), 16);
 			if (ch >= 128) ch += 0x350;
-			ch = String.fromCharCode("0x" + ch.toString(16));
+			ch = String.fromCharCode("0x" + ch?.toString(16));
 			result += ch;
 		}
 		return result;
@@ -801,6 +811,22 @@ class BastyonCalls extends EventEmitter {
 		call.reject('busy')
 		this.signal.pause()
 	}
+	setLocalElement() {
+		const st = this.activeCall.feeds.find(f => f.userId === this.activeCall.user.userId)?.stream
+		try {
+			(st && document.getElementById("local")) ? document.getElementById("local").srcObject ? null: document.getElementById("local").srcObject = st : null
+		} catch (e) {
+			console.log(e)
+		}
+	}
+	setRemoteElement() {
+		const st = this.activeCall.feeds.find(f => f.userId !== this.activeCall.user.userId)?.stream
+		try {
+			(st && document.getElementById("remote")) ? document.getElementById("remote").srcObject = st : null
+		} catch (e) {
+			console.log(e)
+		}
+	}
 
 	initCallInterface(type, call){
 
@@ -815,12 +841,11 @@ class BastyonCalls extends EventEmitter {
 					local : document.getElementById("local")
 				}
 				try {
-					// console.log('init call interface',this.activeCall)
-					this.activeCall.setLocalVideoElement(this.videoStreams.local)
-					this.activeCall.setRemoteVideoElement(this.videoStreams.remote)
+					console.log('init call interface',this.activeCall)
 					this.cameraCount()
 					this.root.style = {}
 					let size = localStorage.getItem('callSizeSettings')?.toString()
+					this.setLocalElement()
 					console.log('init with ' + size)
 					switch (size){
 						case 'mini' :
@@ -839,7 +864,7 @@ class BastyonCalls extends EventEmitter {
 
 					this.addVideoInterfaceListeners()
 				} catch (e) {
-					// console.log('init interface error',e)
+					console.log('init interface error',e)
 				}
 				break;
 		}
@@ -859,15 +884,20 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	addCallListeners(call){
-
+		call.on('feeds_changed', (a,b) => {
+			console.log('feed', a)
+			this.setRemoteElement()
+			this.setLocalElement()
+		})
 		call.on('state', (a,b) => {
-			console.log('state',a, call)
+			// console.log('state',a, call)
 
 			if	(a === 'connecting') {
 				this.signal.pause()
 				this.showConnecting()
 			}
 			if (a === 'connected') {
+				console.log('ready',call)
 				this.signal.pause()
 				this.showRemoteVideo()
 				if (!this.timeInterval) {
@@ -1028,13 +1058,8 @@ class BastyonCalls extends EventEmitter {
 	showRemoteVideo() {
 		document.getElementById('remote-scene').classList.remove('novid')
 		document.getElementById('remote-scene').classList.remove('connecting')
-		let sender = this.activeCall.peerConn.getSenders().find((s) => {
-			return s.track.kind === 'audio';
-		})
-		if (!sender.track.enabled) {
-			console.log('sound off, fixing')
-			sender.track.enabled = true
-		}
+		this.setRemoteElement()
+
 	}
 
 	showConnecting() {
