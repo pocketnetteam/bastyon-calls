@@ -246,6 +246,7 @@ class BastyonCalls extends EventEmitter {
 						 let a = new Audio('js/lib')
 						 a.autoplay = true
 						 a.loop = true
+						 a.volume = 0.5
 
 						 this.signal = a
 
@@ -268,6 +269,7 @@ class BastyonCalls extends EventEmitter {
 				let a = new Audio('js/lib')
 				a.autoplay = true
 				a.loop = true
+				a.volume = 0.5
 
 				this.signal = a
 				this.renderTemplates.incomingCall(call)
@@ -354,23 +356,24 @@ class BastyonCalls extends EventEmitter {
 			})
 		})
 
-		this.syncInterval = setInterval((function(){
+		this.syncInterval = setInterval(() => {
 
-			if(this?.activeCall?.remoteStream) {
-				let track = this?.activeCall?.remoteStream.getVideoTracks()[0]
-				if(this.root.classList.contains('minified')){
+			if(this?.activeCall?.remoteUsermediaStream) {
+				let track = this?.activeCall?.remoteUsermediaStream.getVideoTracks()[0]
+				//if(this.root.classList.contains('minified')){
 					let aspectRatio = track.getSettings().aspectRatio
+
 					if (aspectRatio){
-						container.style.aspectRatio = aspectRatio
-						if (aspectRatio < 1) {
+						container.style.aspectRatio = 1 / aspectRatio
+						if (aspectRatio > 1) {
 							container.classList.add('vertical')
 						} else {
 							container.classList.remove('vertical')
 						}
 					}
-				}
+				//}
 			}
-		}).bind(this),300)
+		}, 300)
 	}
 
 	// play(e){
@@ -595,6 +598,7 @@ class BastyonCalls extends EventEmitter {
 		}
 	}
 	pip(e) {
+		console.log("E", e)
 		if (this.root.classList.contains('middle')) {
 			this.root.classList.remove('middle')
 			this.toMini()
@@ -618,86 +622,100 @@ class BastyonCalls extends EventEmitter {
 	toMini() {
 		this.root.classList.add('minified')
 		localStorage.setItem('callSizeSettings', 'mini')
+
+
+		/*if(typeof Hammer != 'undefined'){
+			this.hammertime = new Hammer(this.root, {
+				pan : true
+			});
+
+			hammertime.on('pan', function(ev) {
+				console.log(ev);
+			});
+		}*/
+		
+
+
 		let pos = JSON.parse(localStorage.getItem('callPositionSettings'))
 
-			this.root.onmousedown = (event) => {
-				console.log('mouse down')
+		this.root.onmousedown = (event) => {
+			console.log('mouse down')
 
-				event.preventDefault()
-				if (event.target.classList.contains('bc-btn')) return
-				let shiftLeft = event.clientX - this.root.getBoundingClientRect().left;
-				let shiftTop = event.clientY - this.root.getBoundingClientRect().top;
-				this.root.style.cursor = 'grabbing'
-				this.root.style.zIndex = 10000000;
-				document.onmousemove = (e) => {
-					this.root.style.bottom = 'auto'
-					if (e.pageY) {
-						if(((window.innerHeight - this.root.getBoundingClientRect().bottom) > 10) && ((e.clientY - shiftTop) > 10)) {
-							if ((window.innerHeight - this.root.offsetHeight - 11) >= e.clientY - shiftTop){
-								this.root.style.top = this.getPercents('height',e.clientY - shiftTop);
-							}
-						} else if(((window.innerHeight - this.root.getBoundingClientRect().bottom) <= 10) && (e.movementY < 0)) {
-							this.root.style.top = this.getPercents('height',window.innerHeight - this.root.offsetHeight - 11);
-						}
-						else {
-							console.log('y out',window.innerHeight - this.root.getBoundingClientRect().bottom , e.clientY - shiftTop)
-						}
-					} else {
-						return
-					}
-					if (e.pageX) {
-						if (((0 < e.clientX - shiftLeft) && (e.clientX - shiftLeft < 10)) && e.movementX > 0) {
-							this.root.style.left = e.pageX - shiftLeft + 'px';
-						} else if((e.clientX - shiftLeft > 10) && ((document.body.clientWidth - this.root.getBoundingClientRect().left - this.root.offsetWidth) > 70)){
-							if ((document.body.clientWidth - this.root.offsetWidth - 71) >= (e.pageX - shiftLeft)) {
-								this.root.style.left = this.getPercents('width', e.pageX - shiftLeft)
-							}
-						} else if(((document.body.clientWidth - this.root.getBoundingClientRect().left - this.root.offsetWidth) <= 70) && e.movementX < 0){
-							this.root.style.left = this.root.style.left = this.getPercents('width', document.body.clientWidth - this.root.offsetWidth - 71)
-						} else {
-							console.log('x out',document.body.clientWidth - this.root.getBoundingClientRect().left - this.root.offsetWidth)
-						}
-					} else {
-						return
-					}
-				}
-
-				document.onmouseleave = (event) => {
-					event.preventDefault()
-					console.log('leave')
-					document.onmousemove = null
-					this.root.onmouseup = null
-					this.root.ontouchend = null
-				}
-
-				document.onmouseup = (event) => {
-					console.log('mouse up')
-					localStorage.setItem('callPositionSettings', JSON.stringify({left:this.root.style.left ,top: this.root.style.top}))
-					document.onmousemove = null
-					this.root.style.cursor = 'grab'
-					document.onmouseup = null
-				};
-				document.ontouchend = (event) => {
-					localStorage.setItem('callPositionSettings', JSON.stringify({left:this.root.style.left ,top:this.root.style.top}))
-					if (!event.target.classList.contains('bc-btn')) {
-						event.preventDefault()
-					}
-					document.onmousemove = null
-					this.root.style.cursor = 'grab'
-					document.ontouchend = null
-				};
-				event.stopPropagation()
-
-			};
-			this.root.ondragstart = function() {
-				return false;
-			};
-
-			if (pos) {
+			event.preventDefault()
+			if (event.target.classList.contains('bc-btn')) return
+			let shiftLeft = event.clientX - this.root.getBoundingClientRect().left;
+			let shiftTop = event.clientY - this.root.getBoundingClientRect().top;
+			this.root.style.cursor = 'grabbing'
+			this.root.style.zIndex = 10000000;
+			document.onmousemove = (e) => {
 				this.root.style.bottom = 'auto'
-				this.root.style.top = pos.top
-				this.root.style.left = pos.left
+				if (e.pageY) {
+					if(((window.innerHeight - this.root.getBoundingClientRect().bottom) > 10) && ((e.clientY - shiftTop) > 10)) {
+						if ((window.innerHeight - this.root.offsetHeight - 11) >= e.clientY - shiftTop){
+							this.root.style.top = this.getPercents('height',e.clientY - shiftTop);
+						}
+					} else if(((window.innerHeight - this.root.getBoundingClientRect().bottom) <= 10) && (e.movementY < 0)) {
+						this.root.style.top = this.getPercents('height',window.innerHeight - this.root.offsetHeight - 11);
+					}
+					else {
+						console.log('y out',window.innerHeight - this.root.getBoundingClientRect().bottom , e.clientY - shiftTop)
+					}
+				} else {
+					return
+				}
+				if (e.pageX) {
+					if (((0 < e.clientX - shiftLeft) && (e.clientX - shiftLeft < 10)) && e.movementX > 0) {
+						this.root.style.left = e.pageX - shiftLeft + 'px';
+					} else if((e.clientX - shiftLeft > 10) && ((document.body.clientWidth - this.root.getBoundingClientRect().left - this.root.offsetWidth) > 70)){
+						if ((document.body.clientWidth - this.root.offsetWidth - 71) >= (e.pageX - shiftLeft)) {
+							this.root.style.left = this.getPercents('width', e.pageX - shiftLeft)
+						}
+					} else if(((document.body.clientWidth - this.root.getBoundingClientRect().left - this.root.offsetWidth) <= 70) && e.movementX < 0){
+						this.root.style.left = this.root.style.left = this.getPercents('width', document.body.clientWidth - this.root.offsetWidth - 71)
+					} else {
+						console.log('x out',document.body.clientWidth - this.root.getBoundingClientRect().left - this.root.offsetWidth)
+					}
+				} else {
+					return
+				}
 			}
+
+			document.onmouseleave = (event) => {
+				event.preventDefault()
+				console.log('leave')
+				document.onmousemove = null
+				this.root.onmouseup = null
+				this.root.ontouchend = null
+			}
+
+			document.onmouseup = (event) => {
+				console.log('mouse up')
+				localStorage.setItem('callPositionSettings', JSON.stringify({left:this.root.style.left ,top: this.root.style.top}))
+				document.onmousemove = null
+				this.root.style.cursor = 'grab'
+				document.onmouseup = null
+			};
+			document.ontouchend = (event) => {
+				localStorage.setItem('callPositionSettings', JSON.stringify({left:this.root.style.left ,top:this.root.style.top}))
+				if (!event.target.classList.contains('bc-btn')) {
+					event.preventDefault()
+				}
+				document.onmousemove = null
+				this.root.style.cursor = 'grab'
+				document.ontouchend = null
+			};
+			event.stopPropagation()
+
+		};
+		this.root.ondragstart = function() {
+			return false;
+		};
+
+		if (pos) {
+			this.root.style.bottom = 'auto'
+			this.root.style.top = pos.top
+			this.root.style.left = pos.left
+		}
 	}
 
 	getPercents(type, value) {
@@ -714,8 +732,13 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	cancelMini() {
-		console.log('cancel mini',localStorage.getItem('callSizeSettings'), localStorage.getItem('callSizeSettings')?.toString() == 'mini' )
+	
+
 		this.root.classList.remove('minified')
+
+		if(this.hammertime)
+			this.hammertime.destroy()
+		
 		document.onmousemove = null
 		this.root.style = {}
 		this.root.onmousedown = null
@@ -732,13 +755,27 @@ class BastyonCalls extends EventEmitter {
 			return Promise.reject()
 		}
 
+		console.log("init call")
+
 
 		return this.initCordovaPermisions().then(() => {
 			this.emit('initcall')
 
 			const call = this.matrixcs.createNewMatrixCall(this.client, roomId)
 
-			call.placeVideoCall().then( (async function() {
+			let a = new Audio('js/lib')
+			a.autoplay = true
+			a.loop = true
+			a.volume = 0.5
+			this.signal = a
+
+			console.log("init call2")
+
+
+			return call.placeVideoCall().then( (async function() {
+
+				console.log("init call3")
+
 
 				let members = this.client.store.rooms[ call.roomId ].currentState.members
 
@@ -771,16 +808,10 @@ class BastyonCalls extends EventEmitter {
 					console.log('get user info error',e)
 					throw new Error(e)
 				})
+
+				return call
 			}).bind(this))
 
-
-
-			let a = new Audio('js/lib')
-			a.autoplay = true
-			a.loop = true
-			this.signal = a
-
-			return call
 		})
 
 		
@@ -884,15 +915,22 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	addCallListeners(call){
+
+		console.log('addCallListeners')
+
 		call.on('feeds_changed', (a,b) => {
 			console.log('feed', a)
 			this.setRemoteElement()
 			this.setLocalElement()
 		})
 		call.on('state', (a,b) => {
-			// console.log('state',a, call)
+			console.log('state', a, call)
 
-			if	(a === 'connecting') {
+			if (a == 'wait_local_media'){
+
+			}
+
+			if (a === 'connecting') {
 				this.signal.pause()
 				this.showConnecting()
 			}
@@ -905,8 +943,8 @@ class BastyonCalls extends EventEmitter {
 				} else {
 
 				}
-				this.signal.loop = false
-				this.signal.src = 'sounds/connected.mp3'
+				//this.signal.loop = false
+				//this.signal.src = 'sounds/connected.mp3'
 
 				this.clearBlinking()
 				this.initsync()
@@ -929,8 +967,8 @@ class BastyonCalls extends EventEmitter {
 		call.on("hangup", (call) => {
 
 			console.log('hangup', call)
-			this.signal.loop = false
-			this.signal.src = 'sounds/hangup.mp3'
+			//this.signal.loop = false
+			//this.signal.src = 'sounds/hangup.mp3'
 			clearInterval(this.syncInterval)
 			this.syncInterval = null
 			console.log('Call ended',call.callId)
@@ -1105,12 +1143,6 @@ class BastyonCalls extends EventEmitter {
 
 		return new Promise((resolve, reject) => {
 			if (window?.cordova) {
-				const permissions = cordova.plugins.permissions;
-				const permList = [
-					permissions.CAMERA,
-					permissions.RECORD_AUDIO
-				];
-				permissions.requestPermissions(permList, success, error);
 
 				function error(e) {
 					console.log('Camera permission is not turned on');
@@ -1124,6 +1156,9 @@ class BastyonCalls extends EventEmitter {
 					}, 50)
 					
 				}
+
+				window.BSTMedia.permissions({ audio: true, video : true }).then(success).catch(error)
+
 			}
 			else{
 				(async ()=>{
