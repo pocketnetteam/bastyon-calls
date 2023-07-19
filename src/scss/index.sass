@@ -23,6 +23,10 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
     -moz-box-shadow: 0 0 0 0 rgba(var(--color-bg-ac-bright), .4)
     box-shadow: 0 0 0 0 rgba(var(--color-bg-ac-bright), .4)
 #bc-root
+  -moz-transition: 0.05s transform
+  -o-transition: 0.05s transform
+  -webkit-transition: 0.05s transform
+  transition: 0.05s transform
 
   button
     outline: none
@@ -147,6 +151,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
             max-height: 250px
             padding: 1em
             max-width: 250px
+
           video
             transition: all .3s ease
             //height: 20vw
@@ -189,7 +194,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
       right: 10px !important
       left: initial !important
       bottom: initial !important
-      border-radius: 15px
+      border-radius: 10px
       overflow: hidden
 
       .bc-video-container
@@ -423,6 +428,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
         flex-wrap: wrap
         max-width: 200px
         .avatar
+          margin-bottom: 0
           display: flex
         video
           display: none
@@ -435,9 +441,10 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
       border-radius: 20px
       z-index: 33333333
       position: fixed
-      right: 30px
+      right: 20px
       bottom: 10%
       overflow: hidden
+
       video
         transform: scale(-1, 1)
         height: 15vh
@@ -544,5 +551,3 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
         @media (pointer: fine)
           &:hover
             width: 400px
-
-

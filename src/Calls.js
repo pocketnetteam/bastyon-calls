@@ -619,24 +619,75 @@ class BastyonCalls extends EventEmitter {
 		this.root.classList.add('full')
 		localStorage.setItem('callSizeSettings', 'full')
 	}
+
+	getRootTranslate(){
+		var tr = ((this.root.style.transform || '').replace('translate3d(', '').replace(')', '').replace(/px/g, '') || '0,0,0').split(',')
+
+		return{
+			x : Number(tr[0]),
+			y : Number(tr[1])
+		}
+	}
+
+	setRootTranslate({x, y}){
+
+		window.requestAnimationFrame(() => {
+			this.root.style.transform = 'translate3d('+(x||0)+'px,'+(y||0)+'px,0px)'
+		})
+		
+	}
+
 	toMini() {
 		this.root.classList.add('minified')
 		localStorage.setItem('callSizeSettings', 'mini')
 
 
 		/*if(typeof Hammer != 'undefined'){
-			this.hammertime = new Hammer(this.root, {
-				pan : true
-			});
+			console.log("HAMMER")
+			this.hammertime = new Hammer(this.root);
 
-			hammertime.on('pan', function(ev) {
-				console.log(ev);
+			this.hammertime.get('pan').set({ threshold: 20, direction: Hammer.DIRECTION_ALL });
+	
+
+			var x = 0, y = 0, started = false
+
+			this.hammertime.on('pan', (e) => {
+
+				console.log("E", e, e.isFirst)
+
+				if (e.isFirst){
+
+					var rt = this.getRootTranslate()
+
+					x = rt.x; 
+					y = rt.y
+
+					started = true
+				}
+
+				if (started){
+					var nx = x + e.deltaX
+					var ny = y + e.deltaY
+					this.setRootTranslate({x : nx, y : ny})
+				}
+
+				if (e.isFinal){
+					started = false
+				}
+
+				
 			});
-		}*/
+		}
+
+		return*/
 		
-
-
 		let pos = JSON.parse(localStorage.getItem('callPositionSettings'))
+
+		if (pos) {
+			this.root.style.bottom = 'auto'
+			this.root.style.top = pos.top
+			this.root.style.left = pos.left
+		}
 
 		this.root.onmousedown = (event) => {
 			console.log('mouse down')
@@ -711,11 +762,7 @@ class BastyonCalls extends EventEmitter {
 			return false;
 		};
 
-		if (pos) {
-			this.root.style.bottom = 'auto'
-			this.root.style.top = pos.top
-			this.root.style.left = pos.left
-		}
+		
 	}
 
 	getPercents(type, value) {
@@ -736,8 +783,11 @@ class BastyonCalls extends EventEmitter {
 
 		this.root.classList.remove('minified')
 
-		if(this.hammertime)
+		if (this.hammertime){
+			this.hammertime.off('pan')
 			this.hammertime.destroy()
+		}
+			
 		
 		document.onmousemove = null
 		this.root.style = {}
@@ -907,7 +957,7 @@ class BastyonCalls extends EventEmitter {
 		document.getElementById("bc-hide").addEventListener('click', (e) => this.hide.call(this,e))
 		document.getElementById("bc-camera").addEventListener('click', (e) => this.camera.call(this,e))
 		document.getElementById("bc-expand").addEventListener('click', (e) => this.pip.call(this,e))
-		document.getElementById("remote-scene").addEventListener('touchstart', (e) => this.pip.call(this,e))
+		document.getElementById("remote-scene").addEventListener('click', (e) => this.pip.call(this,e))
 		document.getElementById("bc-pip").addEventListener('click', (e) => this.pip.call(this,e))
 		document.getElementById("bc-format").addEventListener('click', (e) => this.format.call(this,e))
 		// document.getElementById("bc-cog").addEventListener('click', (e) => this.settings.call(this,e))
