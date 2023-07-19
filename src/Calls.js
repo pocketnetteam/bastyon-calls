@@ -347,6 +347,7 @@ class BastyonCalls extends EventEmitter {
 	initsync() {
 
 		let container = document.querySelector('.bc-video-container')
+
 		this.activeCall.peerConn.getStats(null).then((stats) => {
 			let filtered = [...stats].filter(r=> {
 				return r[1].type === 'candidate-pair'
@@ -356,23 +357,47 @@ class BastyonCalls extends EventEmitter {
 			})
 		})
 
+		var inited = false
+
 		this.syncInterval = setInterval(() => {
 
 			if(this?.activeCall?.remoteUsermediaStream) {
-				let track = this?.activeCall?.remoteUsermediaStream.getVideoTracks()[0]
-				//if(this.root.classList.contains('minified')){
-					let aspectRatio = track.getSettings().aspectRatio
+				
+				let track = this.activeCall.remoteUsermediaStream.getVideoTracks()[0]
+				let aspectRatio = track.getSettings().aspectRatio
 
-					if (aspectRatio){
-						container.style.aspectRatio = 1 / aspectRatio
-						if (aspectRatio > 1) {
-							container.classList.add('vertical')
-						} else {
-							container.classList.remove('vertical')
-						}
+				var hastrack = _.filter(this.activeCall.remoteUsermediaStream.getVideoTracks(), t => {
+					return t.readyState == 'live'
+				}).length + _.filter(this.activeCall.remoteUsermediaStream.getAudioTracks(), t => {
+					return t.readyState == 'live'
+				}).length
+
+				console.log('hastrack', hastrack)
+
+
+				if(hastrack){
+					if(!inited){
+						document.getElementById('remote-scene').classList.remove('novid')
+						document.getElementById('remote-scene').classList.remove('connecting')
 					}
-				//}
+	
+					inited = true
+				}
+				
+
+				if (aspectRatio){
+					container.style.aspectRatio = 1 / aspectRatio
+
+					if (aspectRatio > 1) {
+						container.classList.add('vertical')
+					} else {
+						container.classList.remove('vertical')
+					}
+
+					return
+				}
 			}
+
 		}, 300)
 	}
 
@@ -999,7 +1024,7 @@ class BastyonCalls extends EventEmitter {
 				this.clearBlinking()
 				this.initsync()
 				if(this?.options?.onConnected) {
-					this.options.onConnected(call)
+					this.options.onConnected(call, this)
 				}
 
 			}
@@ -1010,7 +1035,7 @@ class BastyonCalls extends EventEmitter {
 				this.signal.pause()
 				this.clearBlinking()
 				if(this?.options?.onEnded) {
-					this.options.onEnded(call)
+					this.options.onEnded(call, this)
 				}
 			}
 		})
@@ -1144,8 +1169,8 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	showRemoteVideo() {
-		document.getElementById('remote-scene').classList.remove('novid')
-		document.getElementById('remote-scene').classList.remove('connecting')
+		
+		
 		this.setRemoteElement()
 
 	}
