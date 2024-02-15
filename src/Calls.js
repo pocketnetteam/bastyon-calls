@@ -28,8 +28,8 @@ class BastyonCalls extends EventEmitter {
 	timer = null
 	timeInterval = null
 	title = null
-	blinkInterval = null
 	destroyed = false
+	view = 'middle'
 	templates = {
 		incomingCall : function(call){
 			return `
@@ -366,16 +366,16 @@ class BastyonCalls extends EventEmitter {
 				let track = this.activeCall.remoteUsermediaStream.getVideoTracks()[0]
 				let aspectRatio = track.getSettings().aspectRatio
 
-				var hastrack = _.filter(this.activeCall.remoteUsermediaStream.getVideoTracks(), t => {
-					return t.readyState == 'live'
+				/*var hastrack = _.filter(this.activeCall.remoteUsermediaStream.getVideoTracks(), t => {
+					return t.readyState == 'live' && t.getSettings().aspectRatio
 				}).length + _.filter(this.activeCall.remoteUsermediaStream.getAudioTracks(), t => {
+					console.log("T" ,t, t.readyState, t.getSettings())
 					return t.readyState == 'live'
 				}).length
 
-				console.log('hastrack', hastrack)
+				console.log('hastrack', hastrack)*/
 
-
-				if(hastrack){
+				if(!track || (track && aspectRatio) || (window.isios && window.isios())){
 					if(!inited){
 						document.getElementById('remote-scene').classList.remove('novid')
 						document.getElementById('remote-scene').classList.remove('connecting')
@@ -383,6 +383,11 @@ class BastyonCalls extends EventEmitter {
 	
 					inited = true
 				}
+
+
+				//if(hastrack){
+					
+				//}
 				
 
 				if (aspectRatio){
@@ -395,6 +400,11 @@ class BastyonCalls extends EventEmitter {
 					}
 
 					return
+				}
+
+				else{
+					if (container.style.aspectRatio != 1)
+						container.style.aspectRatio = 1
 				}
 			}
 
@@ -639,10 +649,22 @@ class BastyonCalls extends EventEmitter {
 		debugger
 		this.root.classList.add('middle')
 		localStorage.setItem('callSizeSettings', 'middle')
+
+		this.view = "middle"
+
+		if (this?.options?.changeView) {
+			this.options.changeView(this.activeCall, this)
+		}
 	}
 	toFull() {
 		this.root.classList.add('full')
 		localStorage.setItem('callSizeSettings', 'full')
+
+		this.view = "full"
+
+		if (this?.options?.changeView) {
+			this.options.changeView(this.activeCall, this)
+		}
 	}
 
 	getRootTranslate(){
@@ -666,6 +688,11 @@ class BastyonCalls extends EventEmitter {
 		this.root.classList.add('minified')
 		localStorage.setItem('callSizeSettings', 'mini')
 
+		this.view = "mini"
+
+		if (this?.options?.changeView) {
+			this.options.changeView(this.activeCall, this)
+		}
 
 		/*if(typeof Hammer != 'undefined'){
 			console.log("HAMMER")
@@ -708,7 +735,9 @@ class BastyonCalls extends EventEmitter {
 		
 		let pos = JSON.parse(localStorage.getItem('callPositionSettings'))
 
-		if (pos) {
+		console.log('pospos', pos)
+
+		if (pos && pos.top && pos.left) {
 			this.root.style.bottom = 'auto'
 			this.root.style.top = pos.top
 			this.root.style.left = pos.left
@@ -817,6 +846,10 @@ class BastyonCalls extends EventEmitter {
 		document.onmousemove = null
 		this.root.style = {}
 		this.root.onmousedown = null
+
+		if (this?.options?.onCancelMini) {
+			this.options.onCancelMini(this.activeCall, this)
+		}
 	}
 
 	initCall(roomId){
@@ -906,7 +939,7 @@ class BastyonCalls extends EventEmitter {
 
 	hangup(e){
 		e.stopPropagation()
-		// console.log('hangup', this.activeCall)
+	
 		this.activeCall.hangup('ended', false)
 		this.renderTemplates.clearVideo()
 
@@ -1160,10 +1193,10 @@ class BastyonCalls extends EventEmitter {
 
 	getAvatar(call) {
 		if(call?.initiator?.source?.image){
-			return `<img src="${call.initiator.source.image}"/>`
+			return `<img src="${typeof replaceArchiveInImage != 'undefined' ? replaceArchiveInImage(call.initiator.source.image) : call.initiator.source.image}"/>`
 		}
 		if(this.activeCall.initiator?.source?.image){
-			return `<img src="${this.activeCall.initiator.source.image}"/>`
+			return `<img src="${typeof replaceArchiveInImage != 'undefined' ? replaceArchiveInImage(this.activeCall.initiator.source.image) : this.activeCall.initiator.source.image}"/>`
 		}
 		return this.activeCall.initiator.source.name[0].toUpperCase()
 	}
@@ -1180,37 +1213,11 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	setBlinking() {
-
-		var titleElement = document.querySelector('title')
-
-		if(!titleElement) return
-
-		this.title = titleElement.innerHTML
-		let currentTitle = this.title
-		this.blinkInterval = setInterval((function() {
-	
-			if (currentTitle === this.title) {
-				currentTitle = this.options.getWithLocale('incomingCall')
-			} else {
-				currentTitle = this.title
-			}
-
-			titleElement.innerHTML = currentTitle
-
-		}).bind(this),1000)
+		this.options.changeTitle ? this.options.changeTitle(this.options.getWithLocale('incomingCall')) : ""
 	}
 
 	clearBlinking() {
-
-		var titleElement = document.querySelector('title')
-
-		if(!titleElement) return
-
-		clearInterval(this.blinkInterval)
-		this.blinkInterval = null
-
-		titleElement.innerHTML = this.title
-
+		this.options.changeTitle ? this.options.changeTitle() : ""
 	}
 
 

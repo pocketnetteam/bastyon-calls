@@ -223,6 +223,11 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
     z-index: 4444444 !important
     position: fixed
     top: 28px
+
+  @media screen and (max-width: 768px)
+    &-notify
+      top : 56px
+    
   &-incoming-call
     z-index: 33333
     padding: 10px
@@ -459,6 +464,11 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
           height: 15vh
           width: auto
 
+    @media screen and (max-width: 768px)
+      &.minified
+        bottom: 120px
+       
+
   &-controls
     display: flex
     justify-content: center
@@ -503,7 +513,9 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
         display: none
 
 
-
+  @media screen and (max-width: 768px)
+    &-controls
+      padding-bottom : 60px
 
   &-topnav
     z-index: 4444444 !important
@@ -525,6 +537,11 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
         cursor: pointer
         i
           color: rgb(var(--text-on-bg-ac-color))
+
+
+  @media screen and (max-width: 768px)
+    &-topnav
+      padding-top : 44px
 
   &-call-info
     display: flex
