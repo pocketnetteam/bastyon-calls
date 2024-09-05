@@ -359,6 +359,9 @@ class BastyonCalls extends EventEmitter {
 
 		var inited = false
 
+		if (this.syncInterval)
+			clearInterval(this.syncInterval)
+
 		this.syncInterval = setInterval(() => {
 
 			if(this?.activeCall?.remoteUsermediaStream) {
@@ -1031,6 +1034,7 @@ class BastyonCalls extends EventEmitter {
 			this.setRemoteElement()
 			this.setLocalElement()
 		})
+
 		call.on('state', (a,b) => {
 			console.log('state', a, call)
 
@@ -1042,25 +1046,26 @@ class BastyonCalls extends EventEmitter {
 				this.signal.pause()
 				this.showConnecting()
 			}
+
 			if (a === 'connected') {
-				console.log('ready',call)
 				this.signal.pause()
 				this.showRemoteVideo()
+
 				if (!this.timeInterval) {
 					this.initTimer()
 				} else {
 
 				}
-				//this.signal.loop = false
-				//this.signal.src = 'sounds/connected.mp3'
 
 				this.clearBlinking()
 				this.initsync()
+
 				if(this?.options?.onConnected) {
 					this.options.onConnected(call, this)
 				}
-
 			}
+
+
 			if (a === 'ended') {
 				this.clearTimer()
 				clearInterval(this.syncInterval)
@@ -1202,8 +1207,6 @@ class BastyonCalls extends EventEmitter {
 	}
 
 	showRemoteVideo() {
-		
-		
 		this.setRemoteElement()
 
 	}
