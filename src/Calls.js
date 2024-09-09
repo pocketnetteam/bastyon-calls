@@ -367,7 +367,7 @@ class BastyonCalls extends EventEmitter {
 			if(this?.activeCall?.remoteUsermediaStream) {
 				
 				let track = this.activeCall.remoteUsermediaStream.getVideoTracks()[0]
-				let aspectRatio = track.getSettings().aspectRatio
+				let aspectRatio = track.getSettings().aspectRatio ?? 1.3
 
 				/*var hastrack = _.filter(this.activeCall.remoteUsermediaStream.getVideoTracks(), t => {
 					return t.readyState == 'live' && t.getSettings().aspectRatio
