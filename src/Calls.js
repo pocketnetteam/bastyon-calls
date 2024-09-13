@@ -1005,62 +1005,69 @@ class BastyonCalls extends EventEmitter {
 		console.log("init call");
 
 		return this.initCordovaPermisions(callType).then(() => {
-			this.emit("initcall");
 
-			const call = this.matrixcs.createNewMatrixCall(this.client, roomId);
+			let members = this.client.store.rooms[roomId].currentState.members;
 
-			let a = new Audio("js/lib");
-			a.autoplay = true;
-			a.loop = true;
-			a.volume = 0.5;
-			this.signal = a;
+			let initiatorId = Object.keys(members).filter(
+				(m) => m !== this.client.credentials.userId
+			);
 
-			console.log("init call2");
+			let initiator = members[initiatorId];
 
-			return call.placeCall(true, _isVideoCall).then(
-				async function () {
+			let user = members[this.client.credentials.userId];
+
+			return this.options.getUserInfo(initiator.userId).then((res) => {
+
+				initiator.source = res[0] || res;
+
+				console.log(res, initiator);
+
+				this.emit("initcall");
+
+				const call = this.matrixcs.createNewMatrixCall(this.client, roomId);
+
+				// console.log('after init',this.activeCall)
+				if (!this.activeCall) {
+					this.activeCall = call;
+				} else {
+					// console.log('You have active call',this.activeCall)
+					return;
+				}
+	
+				let a = new Audio("js/lib");
+				a.autoplay = true;
+				a.loop = true;
+				a.volume = 0.5;
+				this.signal = a;
+	
+				console.log("init call2");
+
+				
+	
+				return call.placeCall(true, _isVideoCall).then(() => {
 					console.log("init call3");
-
-					let members =
-						this.client.store.rooms[call.roomId].currentState.members;
-
-					let initiatorId = Object.keys(members).filter(
-						(m) => m !== this.client.credentials.userId
-					);
-
-					let initiator = members[initiatorId];
-
-					let user = members[this.client.credentials.userId];
 
 					call.initiator = initiator;
 					call.user = user;
 
 					this.addCallListeners(call);
 
-					// console.log('after init',this.activeCall)
-					if (!this.activeCall) {
-						this.activeCall = call;
-					} else {
-						// console.log('You have active call',this.activeCall)
-						return;
-					}
+					this.signal.src = "sounds/calling.mp3";
+					this.renderTemplates.call(callType);
 
-					this.options
-						.getUserInfo(initiator.userId)
-						.then((res) => {
-							console.log(res, initiator);
-							initiator.source = res[0] || res;
-							this.signal.src = "sounds/calling.mp3";
-							this.renderTemplates.call(callType);
-						})
-						.catch((e) => {
-							console.log("get user info error", e);
-							throw new Error(e);
-						});
+					
+
 
 					return call;
-				}.bind(this)
-			);
+				})
+					
+			})
+			.catch((e) => {
+				console.log("get user info error", e);
+				return Promise.reject(e)
+			});
+
+			
 		});
 	}
 
