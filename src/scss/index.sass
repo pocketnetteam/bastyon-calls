@@ -4,6 +4,13 @@ $middle-height: 80vh
 
 $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Arial, sans-serif
 
+
+@mixin m-bc-acive
+	background: rgb(var(--text-on-bg-ac-color))
+	& i
+		color: rgb(var(--text-color))
+	
+
 @keyframes callPulse
 	0%
 		opacity: 1
@@ -312,6 +319,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 					animation: none
 					filter: brightness(90%)
 
+
 			#bc-answer-voice
 				height: 48px
 				width: 48px
@@ -432,6 +440,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 				transition: opacity .3s ease
 				animation: 2s callPulse infinite
 				text-align: center
+
 			video
 				max-height: 100vh
 				max-width: 100vw
@@ -499,11 +508,14 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 			justify-content: center
 			cursor: pointer
 			border: none
+			&:disabled
+				cursor: not-allowed
+				opacity: 0.5
+				background: rgba(var(--neutral-grad-2), .2)
 
 			&.active
-				background: rgb(var(--text-on-bg-ac-color))
-				& i
-					color: rgb(var(--text-color))
+				@include m-bc-acive
+
 			@media screen and (max-width: 768px)
 				margin: 0 10px
 				width: 45px
@@ -579,5 +591,20 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 					&:hover
 						width: 400px
 
+
+
+
+#controls
+	&[data-call-type="voice"]
+		#bc-video-on
+			display: none
+		#bc-video-off
+			@include m-bc-acive
+	&[data-call-type="video"]
+		#bc-video-off
+			display: none
+
+.hidden
+	display: none
 
 
