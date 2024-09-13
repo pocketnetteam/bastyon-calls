@@ -57,11 +57,12 @@ class BastyonCalls extends EventEmitter {
 				</div>
 				<div class="buttons">
 					<button class="bc-btn bc-decline" id="bc-decline"><i class="fas fa-phone"></i></button>
-					<button class="bc-btn bc-answer " id="bc-answer-voice"><i class="fas fa-flip-horizontal fa-phone"></i></button>
 					${
 						_isVideoCall &&
 						'<button class="bc-btn bc-answer" id="bc-answer-video"><i class="fa fa-video"></i></button>'
 					}
+					<button class="bc-btn bc-answer " id="bc-answer-voice"><i class="fas fa-flip-horizontal fa-phone"></i></button>
+					
 				</div>
 			</div>
 		`;
@@ -101,7 +102,7 @@ class BastyonCalls extends EventEmitter {
 					<div class="avatar">
 						${this.getAvatar()}
 					</div>
-					<div class="status">connecting...</div>
+					<div class="status">${this.options.getWithLocale("connecting")}</div>
 				</div>
 				<div class="bc-video minified">
 					<video id="local" muted pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
@@ -140,7 +141,7 @@ class BastyonCalls extends EventEmitter {
 					<div class="avatar">
 						${this.getAvatar()}
 					</div>
-					<div class="status">connecting...</div>
+					<div class="status">${this.options.getWithLocale("connecting")}</div>
 				</div>
 				<div class="bc-video minified">
 					<video id="local" class="hidden" muted pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
@@ -466,10 +467,6 @@ class BastyonCalls extends EventEmitter {
 
 					inited = true;
 				}
-
-				//if(hastrack){
-
-				//}
 
 				if (aspectRatio) {
 					container.style.aspectRatio = 1 / aspectRatio;
