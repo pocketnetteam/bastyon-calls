@@ -511,9 +511,9 @@ class BastyonCalls extends EventEmitter {
 		// console.log('mute',this.activeCall.peerConn.getSenders())
 	}
 
-	updateCall(callType) {
+	async updateCall(callType) {
 		const _isVideoCall = isVideoCall(callType);
-		if (_isVideoCall) this.activeCall.upgradeCall(true, true);
+		if (_isVideoCall) await this.activeCall.upgradeCall(true, true);
 		else this.activeCall.setLocalVideoMuted(true);
 		this.renderTemplates.call(callType);
 	}
@@ -1005,7 +1005,6 @@ class BastyonCalls extends EventEmitter {
 		console.log("init call");
 
 		return this.initCordovaPermisions(callType).then(() => {
-
 			let members = this.client.store.rooms[roomId].currentState.members;
 
 			let initiatorId = Object.keys(members).filter(
@@ -1016,58 +1015,51 @@ class BastyonCalls extends EventEmitter {
 
 			let user = members[this.client.credentials.userId];
 
-			return this.options.getUserInfo(initiator.userId).then((res) => {
+			return this.options
+				.getUserInfo(initiator.userId)
+				.then((res) => {
+					initiator.source = res[0] || res;
 
-				initiator.source = res[0] || res;
+					console.log(res, initiator);
 
-				console.log(res, initiator);
+					this.emit("initcall");
 
-				this.emit("initcall");
+					const call = this.matrixcs.createNewMatrixCall(this.client, roomId);
 
-				const call = this.matrixcs.createNewMatrixCall(this.client, roomId);
+					// console.log('after init',this.activeCall)
+					if (!this.activeCall) {
+						this.activeCall = call;
+					} else {
+						// console.log('You have active call',this.activeCall)
+						return;
+					}
 
-				// console.log('after init',this.activeCall)
-				if (!this.activeCall) {
-					this.activeCall = call;
-				} else {
-					// console.log('You have active call',this.activeCall)
-					return;
-				}
-	
-				let a = new Audio("js/lib");
-				a.autoplay = true;
-				a.loop = true;
-				a.volume = 0.5;
-				this.signal = a;
-	
-				console.log("init call2");
+					let a = new Audio("js/lib");
+					a.autoplay = true;
+					a.loop = true;
+					a.volume = 0.5;
+					this.signal = a;
 
-				
-	
-				return call.placeCall(true, _isVideoCall).then(() => {
-					console.log("init call3");
+					console.log("init call2");
 
-					call.initiator = initiator;
-					call.user = user;
+					return call.placeCall(true, _isVideoCall).then(() => {
+						console.log("init call3");
 
-					this.addCallListeners(call);
+						call.initiator = initiator;
+						call.user = user;
 
-					this.signal.src = "sounds/calling.mp3";
-					this.renderTemplates.call(callType);
+						this.addCallListeners(call);
 
-					
+						this.signal.src = "sounds/calling.mp3";
+						this.renderTemplates.call(callType);
 
-
-					return call;
+						return call;
+					});
 				})
-					
-			})
-			.catch((e) => {
-				console.log("get user info error", e);
-				return Promise.reject(e)
-			});
-
-			
+				.catch((e) => {
+					console.log("get user info error", e);
+					return Promise.reject(e);
+				});
 		});
 	}
 
@@ -1219,14 +1211,16 @@ class BastyonCalls extends EventEmitter {
 			console.log("feed", a);
 			this.updateCallElements();
 		});
+
 		this.client.on("Room.timeline", ({ event }) => {
 			const isCallNegotiationEvent =
 				event.type === "m.call.negotiate" &&
 				event.room_id === this?.activeCall?.roomId;
-			if (isCallNegotiationEvent) {
-				this.updateCallElements();
-				this.initsync();
-			}
+			const isAnswerType = event.content?.description?.type === "answer";
+
+			if (isCallNegotiationEvent && isAnswerType) {
+        this.initsync();
+      }
 		});
 		call.on("state", (a, b) => {
 			console.log("state", a, call);
@@ -1494,37 +1488,36 @@ class BastyonCalls extends EventEmitter {
 		});
 	}
 }
-	
-if(typeof retry == 'undefined'){
+
+if (typeof retry == "undefined") {
 	var retry = function (_function, clbk, time, totaltime) {
 		if (_function()) {
 			if (clbk) clbk();
-	
+
 			return;
 		}
-	
+
 		if (!time) time = 20;
-	
+
 		var totalTimeCounter = 0;
-	
+
 		var interval = setInterval(function () {
 			if (_function() || (totaltime && totaltime <= totalTimeCounter)) {
 				clearInterval(interval);
-	
+
 				if (clbk) clbk();
 			}
-	
+
 			totalTimeCounter += time;
 		}, time);
 	};
-	
+
 	var pretry = function (_function, time, totaltime) {
 		return new Promise((resolve, reject) => {
 			retry(_function, resolve, time, totaltime);
 		});
 	};
 }
-
 
 window.BastyonCalls = BastyonCalls;
 export default BastyonCalls;
