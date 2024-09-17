@@ -19,6 +19,16 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 	100%
 		opacity: 1
 
+@keyframes fadeIn 
+	from 
+		opacity: 0
+		transform: scale(0.9)
+	to 
+		opacity: 1
+		transform: scale(1)
+	
+
+
 @keyframes answerPulse
 	from
 		-moz-box-shadow: 0 0 0 0 rgba(var(--color-bg-ac-bright), .4)
@@ -394,6 +404,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 			height: 100vh
 			background: radial-gradient(55.29% 79.17% at 50% 47.76%, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.88) 100%), #242F3D
 			box-shadow: 0 32px 64px rgba(0, 0, 0, 0.56), 0 2px 21px rgba(0, 0, 0, 0.55)
+			animation: fadeIn 0.5s ease-out
 		@media screen and (orientation : portrait)
 			justify-content: center
 		.name
