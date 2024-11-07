@@ -144,9 +144,18 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 		//cursor: grab
 		.bc
 			&-topnav
+				width: auto
+				padding: 5%
 				opacity: 0
 				.bc-call-info
 					max-width: 100%
+					.info
+						overflow: hidden
+						.name
+							width: auto
+							overflow: hidden
+							text-overflow: ellipsis
+							white-space: nowrap
 				.options
 					display: none
 			&-video
@@ -194,8 +203,12 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 					display: none !important
 				.bc
 					&-btn
-						width: 4vw
-						height: 4vw
+						width: 37px
+						height: 37px
+						display: flex
+						justify-content: center
+						align-items: center
+						position: relative
 						max-width: 55px
 						max-height: 55px
 						font-size: 0.8rem
@@ -292,6 +305,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 			.avatar
 				margin-right: 16px
 				border: 2px solid transparent
+				min-width: 44px
 				width: 44px
 				height: 44px
 				border-radius: 50%
@@ -577,6 +591,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 		align-items: center
 		.avatar
 			display: flex
+			min-width: 40px
 			width: 40px
 			height: 40px
 			border-radius: 50%
