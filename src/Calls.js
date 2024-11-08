@@ -58,8 +58,9 @@ class BastyonCalls extends EventEmitter {
 				<div class="buttons">
 					<button class="bc-btn bc-decline" id="bc-decline"><i class="fas fa-phone"></i></button>
 					${
-						_isVideoCall &&
-						'<button class="bc-btn bc-answer" id="bc-answer-video"><i class="fa fa-video"></i></button>'
+						!!_isVideoCall ?
+				'<button class="bc-btn bc-answer" id="bc-answer-video"><i class="fa fa-video"></i></button>'
+				: ''
 					}
 					<button class="bc-btn bc-answer " id="bc-answer-voice"><i class="fas fa-flip-horizontal fa-phone"></i></button>
 					
@@ -98,20 +99,20 @@ class BastyonCalls extends EventEmitter {
 			</div>
 			<div class="bc-video-container">
 				<div class="bc-video active novid" id="remote-scene">
-					<video id="remote" pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
+					<video id="remote" pip="false" autoplay disablePictureInPicture="true" playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
 					<div class="avatar">
 						${this.getAvatar()}
 					</div>
 					<div class="status">${this.options.getWithLocale("connecting")}</div>
 				</div>
 				<div class="bc-video minified">
-					<video id="local" muted pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
+					<video id="local" muted pip="false" disablePictureInPicture="true" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
 				</div>
 			</div>
 			<div class="bc-controls" data-call-type="video" id="controls">
-				<button class="bc-btn bc-camera" id="bc-camera"><i class="fas fa-sync-alt"></i></button>
-				<button class="bc-btn bc-video-on" id="bc-video-on"><i class="fas fa-video"></i></button>
-				<button class="bc-btn bc-video-off" id="bc-video-off"><i class="fas fa-video-slash"></i></button>
+				<button disabled class="bc-btn bc-camera" id="bc-camera"><i class="fas fa-sync-alt"></i></button>
+				<button class="bc-btn bc-video-on call-update-control" disabled id="bc-video-on"><i class="fas fa-video"></i></button>
+				<button class="bc-btn bc-video-off call-update-control" id="bc-video-off"><i class="fas fa-video-slash"></i></button>
 				<button class="bc-btn bc-mute" id="bc-mute"><i class="fas fa-microphone"></i></button>
 				<button class="bc-btn bc-decline" id="bc-decline"><i class="fas fa-phone"></i></button>
 				<button class="bc-btn bc-expand" id="bc-expand"><i class="fas fa-expand"></i></button>
@@ -149,8 +150,8 @@ class BastyonCalls extends EventEmitter {
 			</div>
 			<div data-call-type="voice" class="bc-controls voice" id="controls">
 				<button class="bc-btn bc-camera" disabled id="bc-camera"><i class="fas fa-sync-alt"></i></button>
-				<button class="bc-btn bc-video-on" id="bc-video-on"><i class="fas fa-video"></i></button>
-				<button class="bc-btn bc-video-off" id="bc-video-off"><i class="fas fa-video-slash"></i></button>
+				<button class="bc-btn bc-video-on call-update-control" id="bc-video-on"><i class="fas fa-video"></i></button>
+				<button class="bc-btn bc-video-off call-update-control" disabled id="bc-video-off" ><i class="fas fa-video-slash"></i></button>
 				<button class="bc-btn bc-mute" id="bc-mute"><i class="fas fa-microphone"></i></button>
 				<button class="bc-btn bc-decline" id="bc-decline"><i class="fas fa-phone"></i></button>
 				<button class="bc-btn bc-expand" id="bc-expand"><i class="fas fa-expand"></i></button>
@@ -510,13 +511,37 @@ class BastyonCalls extends EventEmitter {
 
 		// console.log('mute',this.activeCall.peerConn.getSenders())
 	}
+	async handleCallUpdate(actionCallback) {
+		this.setCallUpdateControlsLoading(true);
 
-	async updateCall(callType) {
-		const _isVideoCall = isVideoCall(callType);
-		if (_isVideoCall) await this.activeCall.upgradeCall(true, true);
-		else this.activeCall.setLocalVideoMuted(true);
-		this.renderTemplates.call(callType);
+		try {
+			await actionCallback();
+		} finally {
+			this.setCallUpdateControlsLoading(false);
+		}
 	}
+	setCallUpdateControlsLoading(isLoading) {
+		const elements = document.querySelectorAll(".call-update-control");
+		elements.forEach((element) => {
+			element.disabled = isLoading;
+			element.classList.toggle("loading", isLoading);
+		});
+	}
+	updateCall = async (callType) => {
+		await this.handleCallUpdate(async () => {
+			console.log("dasda");
+
+			const isVideoCallEnabled = isVideoCall(callType);
+
+			if (isVideoCallEnabled) {
+				await this.activeCall.upgradeCall(true, true);
+			} else {
+				this.activeCall.setLocalVideoMuted(true);
+			}
+
+			this.renderTemplates.call(callType);
+		});
+	};
 	hide(e) {
 		e.stopPropagation();
 		let sender = this.activeCall.peerConn.getSenders().find((s) => {
@@ -1123,7 +1148,7 @@ class BastyonCalls extends EventEmitter {
 					.addEventListener("click", () => this.answer(CallTypes.voice));
 				document
 					.getElementById("bc-answer-video")
-					.addEventListener("click", () => this.answer(CallTypes.video));
+					?.addEventListener("click", () => this.answer(CallTypes.video));
 				document
 					.getElementById("bc-decline")
 					.addEventListener("click", () => this.reject(call));
@@ -1171,14 +1196,10 @@ class BastyonCalls extends EventEmitter {
 			?.addEventListener("click", (e) => this.mute.call(this, e));
 		document
 			.getElementById("bc-video-on")
-			?.addEventListener("click", (e) =>
-				this.updateCall.call(this, CallTypes.voice)
-			);
+			?.addEventListener("click", (e) => this.updateCall(CallTypes.voice));
 		document
 			.getElementById("bc-video-off")
-			?.addEventListener("click", (e) =>
-				this.updateCall.call(this, CallTypes.video)
-			);
+			?.addEventListener("click", (e) => this.updateCall(CallTypes.video));
 		document
 			.getElementById("bc-camera")
 			?.addEventListener("click", (e) => this.camera.call(this, e));
@@ -1219,8 +1240,8 @@ class BastyonCalls extends EventEmitter {
 			const isAnswerType = event.content?.description?.type === "answer";
 
 			if (isCallNegotiationEvent && isAnswerType) {
-        this.initsync();
-      }
+				this.initsync();
+			}
 		});
 		call.on("state", (a, b) => {
 			console.log("state", a, call);
@@ -1241,10 +1262,10 @@ class BastyonCalls extends EventEmitter {
 					this.initTimer();
 				} else {
 				}
-
 				this.clearBlinking();
 				this.initsync();
 
+				this.setCallUpdateControlsLoading(false);
 				if (this?.options?.onConnected) {
 					this.options.onConnected(call, this);
 				}

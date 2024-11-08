@@ -28,6 +28,11 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 		transform: scale(1)
 	
 
+@keyframes spin 
+	0% 
+		transform: rotate(0deg)
+	100% 
+		transform: rotate(360deg)
 
 @keyframes answerPulse
 	from
@@ -61,6 +66,21 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 		opacity: 0
 		transition: all 0.5s
 		box-shadow: 0 0 10px 40px rgba(var(--neutral-grad-2), .4)
+	
+	button.loading
+		* 
+			display: none
+		&:before
+			content: ''
+			position: absolute
+			width: 16px
+			height: 16px
+			border: 2px solid transparent
+			border-top-color: rgb(var(--text-color))
+			border-radius: 50%
+			animation: spin 0.6s linear infinite
+			display: block 
+	
 
 
 	button:active:after
