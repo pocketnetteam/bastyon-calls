@@ -99,14 +99,14 @@ class BastyonCalls extends EventEmitter {
 			</div>
 			<div class="bc-video-container">
 				<div class="bc-video active novid" id="remote-scene">
-					<video id="remote" pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
+					<video id="remote" pip="false" autoplay disablePictureInPicture="true" playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
 					<div class="avatar">
 						${this.getAvatar()}
 					</div>
 					<div class="status">${this.options.getWithLocale("connecting")}</div>
 				</div>
 				<div class="bc-video minified">
-					<video id="local" muted pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
+					<video id="local" muted pip="false" disablePictureInPicture="true" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
 				</div>
 			</div>
 			<div class="bc-controls" data-call-type="video" id="controls">
