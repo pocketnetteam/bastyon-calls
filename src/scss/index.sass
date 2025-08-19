@@ -9,7 +9,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 	background: rgb(var(--text-on-bg-ac-color))
 	& i
 		color: rgb(var(--text-color))
-	
+
 
 @keyframes callPulse
 	0%
@@ -19,19 +19,19 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 	100%
 		opacity: 1
 
-@keyframes fadeIn 
-	from 
+@keyframes fadeIn
+	from
 		opacity: 0
 		transform: scale(0.9)
-	to 
+	to
 		opacity: 1
 		transform: scale(1)
-	
 
-@keyframes spin 
-	0% 
+
+@keyframes spin
+	0%
 		transform: rotate(0deg)
-	100% 
+	100%
 		transform: rotate(360deg)
 
 @keyframes answerPulse
@@ -66,9 +66,9 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 		opacity: 0
 		transition: all 0.5s
 		box-shadow: 0 0 10px 40px rgba(var(--neutral-grad-2), .4)
-	
+
 	button.loading
-		* 
+		*
 			display: none
 		&:before
 			content: ''
@@ -79,8 +79,8 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 			border-top-color: rgb(var(--text-color))
 			border-radius: 50%
 			animation: spin 0.6s linear infinite
-			display: block 
-	
+			display: block
+
 
 
 	button:active:after
@@ -91,7 +91,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 		top: 0
 		opacity: 1
 		transition: 0s
-		
+
 	&.full
 		position: fixed !important
 		z-index: 300000
@@ -190,7 +190,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 						.active
 							max-width: 250px
 
-				
+
 
 				&.minified
 					display: none
@@ -277,7 +277,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 	@media screen and (max-width: 768px)
 		&-notify
 			top : 56px
-		
+
 	&-incoming-call
 		z-index: 33333
 		padding: 10px
@@ -527,7 +527,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 		@media screen and (max-width: 768px)
 			&.minified
 				bottom: 120px
-			 
+
 
 	&-controls
 		display: flex
@@ -553,6 +553,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 			justify-content: center
 			cursor: pointer
 			border: none
+
 			&:disabled
 				cursor: not-allowed
 				opacity: 0.5
@@ -565,15 +566,27 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 				margin: 0 10px
 				width: 45px
 				height: 45px
+
 			& i
 				pointer-events: none
 				color: rgb(var(--text-on-bg-ac-color))
+
 			&.bc-decline
 				background: rgb(var(--color-bad))
 				border: 1px solid transparent
 				transform: rotate(225deg)
-			&#bc-expand
+
+			&.bc-expand
 				display: none
+
+		.bc-device-selector
+			margin: 0 20px
+
+			@media screen and (max-width: 768px)
+				margin: 0 10px
+
+			.bc-btn
+				margin: 0 !important
 
 
 	@media screen and (max-width: 768px)
@@ -653,4 +666,351 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 .hidden
 	display: none
 
+.bc-device-selector
+	position: relative
+	display: inline-block
+	margin: 0 20px
 
+	@media screen and (max-width: 768px)
+		margin: 0 10px
+
+	.bc-btn
+		margin: 0 !important
+		position: relative
+
+		&:not(:disabled)
+			opacity: 1
+			cursor: pointer
+			background: rgba(var(--neutral-grad-2), .4)
+
+		&:disabled
+			+ .bc-selector-arrow
+				display: none
+
+	.bc-selector-arrow
+		position: absolute
+		top: -4px
+		right: -4px
+		background: rgb(var(--color-bg-ac))
+		border-radius: 50%
+		width: 16px
+		height: 16px
+		display: flex
+		align-items: center
+		justify-content: center
+		font-size: 10px
+		color: white
+		pointer-events: none
+		z-index: 1
+
+		&::after
+			content: "▼"
+			font-size: 8px
+
+.bc-audio-dropdown
+	position: fixed
+	bottom: 90px
+	left: 50%
+	transform: translateX(-50%)
+	background: rgba(var(--background-secondary-theme), 0.95)
+	border: 1px solid rgba(var(--neutral-grad-2), 0.3)
+	border-radius: 16px
+	color: rgb(var(--text-color))
+	min-width: 280px
+	max-width: 400px
+	max-height: 60vh
+	overflow-y: auto
+	box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5)
+	z-index: 999999
+	font-size: 14px
+	backdrop-filter: blur(20px)
+	opacity: 0
+	transition: all 0.3s ease
+	transform-origin: bottom center
+	scale: 0.9
+
+	&.show
+		opacity: 1
+		scale: 1
+
+	@media screen and (max-width: 768px)
+		bottom: 130px
+		left: 10px
+		right: 10px
+		transform: none
+		min-width: auto
+		max-width: none
+
+	&-header
+		padding: 16px 20px 12px 20px
+		font-weight: 600
+		font-size: 13px
+		color: rgb(var(--neutral-grad-3))
+		background: rgba(var(--neutral-grad-1), 0.2)
+		text-transform: uppercase
+		letter-spacing: 0.5px
+		border-bottom: 1px solid rgba(var(--neutral-grad-2), 0.2)
+
+		i
+			margin-right: 10px
+			color: rgb(var(--color-bg-ac))
+			font-size: 14px
+
+	&-separator
+		height: 1px
+		background: rgba(var(--neutral-grad-2), 0.2)
+		margin: 12px 0
+
+	&-item
+		padding: 16px 20px
+		cursor: pointer
+		font-size: 14px
+		border-bottom: 1px solid rgba(var(--neutral-grad-2), 0.1)
+		transition: all 0.2s ease
+		display: flex
+		align-items: center
+		position: relative
+
+		&:hover
+			background: rgba(var(--color-bg-ac), 0.1)
+
+		&:last-child
+			border-bottom: none
+
+		i
+			margin-right: 16px
+			width: 24px
+			text-align: center
+			color: rgb(var(--neutral-grad-2))
+			font-size: 18px
+
+		&.selected
+			background: rgba(var(--color-bg-ac), 0.15)
+			border-left: 4px solid rgb(var(--color-bg-ac))
+
+			&::after
+				content: "✓"
+				position: absolute
+				right: 20px
+				color: rgb(var(--color-bg-ac))
+				font-weight: bold
+				font-size: 18px
+
+			i
+				color: rgb(var(--color-bg-ac))
+
+		span
+			flex: 1
+			overflow: hidden
+			text-overflow: ellipsis
+			white-space: nowrap
+			font-weight: 500
+
+
+
+.bc-btn
+	&.bc-audio-output
+		position: relative
+
+		&.active
+			@include m-bc-acive
+
+	&.bc-speaker-toggle
+		&.speaker-mode
+			background: rgba(var(--color-bg-ac), 0.8) !important
+
+			i
+				color: rgb(var(--text-on-bg-ac-color))
+
+.bc-controls
+	display: flex
+	justify-content: center
+	position: fixed
+	background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.99466) 99.44%)
+	bottom: 0
+	width: 100%
+	padding: 5%
+	min-width: 280px !important
+	max-width: 100vw
+	gap: 12px
+	flex-wrap: wrap
+
+	.bc-control-group
+		display: flex
+		align-items: center
+		background: rgba(48, 52, 60, 0.95)
+		border-radius: 24px
+		padding: 4px
+		backdrop-filter: blur(15px)
+		border: 1px solid rgba(var(--neutral-grad-2), 0.6)
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)
+		flex-shrink: 0
+
+		.bc-device-selector
+			margin: 0
+
+			.bc-btn
+				margin: 0
+				width: 48px
+				height: 48px
+				border-radius: 50%
+				background: transparent
+				border: none
+				color: rgb(var(--text-on-bg-ac-color))
+				transition: all 0.2s ease
+
+				&:hover:not(:disabled)
+					background: rgba(70, 75, 85, 0.7)
+
+				&:disabled
+					opacity: 0.4
+					cursor: not-allowed
+
+				&.active
+					background: rgb(var(--color-bg-ac))
+					color: white
+
+				&.bc-mute.active
+					background: rgb(var(--color-bad))
+					color: white
+
+				i
+					font-size: 20px
+
+		.bc-selector-button
+			width: 32px
+			height: 48px
+			background: transparent
+			border: none
+			border-left: 1px solid rgba(var(--neutral-grad-2), 0.6)
+			color: rgb(var(--text-on-bg-ac-color))
+			cursor: pointer
+			display: flex
+			align-items: center
+			justify-content: center
+			transition: all 0.2s ease
+
+			&:hover
+				background: rgba(70, 75, 85, 0.7)
+
+			&:disabled
+				opacity: 0.4
+				cursor: not-allowed
+
+			i
+				font-size: 12px
+
+	.bc-btn:not(.bc-control-group .bc-btn)
+		margin: 0
+		width: 56px
+		height: 56px
+		border-radius: 50%
+		background: rgba(48, 52, 60, 0.95)
+		border: 1px solid rgba(var(--neutral-grad-2), 0.6)
+		color: rgb(var(--text-on-bg-ac-color))
+		backdrop-filter: blur(15px)
+		font-size: 20px
+		transition: all 0.2s ease
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2)
+		flex-shrink: 0
+
+		&:hover:not(:disabled)
+			background: rgba(70, 75, 85, 0.9)
+			transform: scale(1.05)
+
+		&:disabled
+			opacity: 0.4
+			cursor: not-allowed
+
+		&.active
+			background: rgb(var(--color-bg-ac))
+			color: white
+
+		&.bc-decline
+			background: rgb(var(--color-bad))
+			color: white
+			transform: rotate(225deg)
+
+			&:hover
+				background: rgba(var(--color-bad), 0.8)
+				transform: rotate(225deg) scale(1.05)
+
+		&.bc-speaker-toggle
+			&.speaker-mode
+				background: rgb(var(--color-bg-ac))
+				color: white
+
+	@media screen and (max-width: 1024px)
+		gap: 10px
+		padding: 4%
+
+		.bc-control-group
+			.bc-btn
+				width: 44px
+				height: 44px
+
+			.bc-selector-button
+				width: 30px
+				height: 44px
+
+		.bc-btn:not(.bc-control-group .bc-btn)
+			width: 52px
+			height: 52px
+			font-size: 18px
+
+	@media screen and (max-width: 768px)
+		padding: 3% 2%
+		padding-bottom: 60px
+		gap: 8px
+		justify-content: space-around
+		flex-wrap: wrap
+
+		.bc-control-group
+			.bc-btn
+				width: 40px
+				height: 40px
+
+				i
+					font-size: 18px
+
+			.bc-selector-button
+				width: 28px
+				height: 40px
+
+				i
+					font-size: 10px
+
+		.bc-btn:not(.bc-control-group .bc-btn)
+			width: 48px
+			height: 48px
+			font-size: 16px
+
+	@media screen and (max-width: 480px)
+		padding: 2% 1%
+		gap: 6px
+
+		.bc-control-group
+			border-radius: 20px
+
+			.bc-btn
+				width: 36px
+				height: 36px
+
+				i
+					font-size: 16px
+
+			.bc-selector-button
+				width: 24px
+				height: 36px
+
+		.bc-btn:not(.bc-control-group .bc-btn)
+			width: 44px
+			height: 44px
+			font-size: 14px
+
+	@media screen and (max-width: 400px)
+		.bc-speaker-toggle
+			display: none
+
+		.bc-expand
+			display: none

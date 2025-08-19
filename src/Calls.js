@@ -2,47 +2,211 @@ import { EventEmitter } from "events";
 import "./scss/index.sass";
 
 const CallTypes = {
-	video: "video",
-	voice: "voice",
+  video: "video",
+  voice: "voice",
 };
 
 const isVideoCall = (callType) => callType === CallTypes.video;
 
 class BastyonCalls extends EventEmitter {
-	constructor(client, matrixcs, root, options) {
-		super();
-		this.client = client;
-		this.matrixcs = matrixcs;
-		this.initEvents();
-		this.initSignals();
-		this.initTemplates(root);
-		/*this.initCordovaPermisions()*/ /// TODO
-		this.options = options;
-		console.log("ss", client, matrixcs);
-		console.log("dd", matrixcs);
-	}
+  constructor(client, matrixcs, root, options) {
+    super();
+    this.client = client;
+    this.matrixcs = matrixcs;
+    this.initEvents();
+    this.initSignals();
+    this.initTemplates(root);
+    /*this.initCordovaPermisions()*/ /// TODO
+    this.options = options;
+    this.initAudioEventListeners();
+    console.log("ss", client, matrixcs);
+    console.log("dd", matrixcs);
+  }
 
-	controls = {};
-	isFrontalCamera = false;
-	videoStreams = null;
-	isMuted = false;
-	activeCall = null;
-	secondCall = null;
-	syncInterval = null;
-	isWaitingForConnect = false;
-	signal = null;
-	timer = null;
-	timeInterval = null;
-	title = null;
-	destroyed = false;
-	view = "middle";
-	templates = {
-		incomingCall: function (call) {
-			const _isVideoCall = isVideoCall(call.type);
-			const callTypeDescriptionKey = _isVideoCall
-				? "incomingVideoCall"
-				: "incomingAudioCall";
-			return `
+  controls = {};
+  isFrontalCamera = false;
+  videoStreams = null;
+  isMuted = false;
+  activeCall = null;
+  secondCall = null;
+  syncInterval = null;
+  isWaitingForConnect = false;
+  signal = null;
+  timer = null;
+  timeInterval = null;
+  title = null;
+  destroyed = false;
+  view = "middle";
+
+  async getAudioDevices() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      return {
+        speakers: devices.filter((device) => device.kind === "audiooutput"),
+        microphones: devices.filter((device) => device.kind === "audioinput"),
+      };
+    } catch (error) {
+      console.error("Error getting audio devices:", error);
+      return { speakers: [], microphones: [] };
+    }
+  }
+
+  async setMicrophoneInput(deviceId) {
+    try {
+      if (!this.activeCall) return false;
+
+      const constraints = {
+        audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+        video: false,
+      };
+
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const newAudioTrack = newStream.getAudioTracks()[0];
+
+      const senders = this.activeCall.peerConn.getSenders();
+      const audioSender = senders.find(
+        (sender) => sender.track && sender.track.kind === "audio",
+      );
+
+      if (audioSender) {
+        await audioSender.replaceTrack(newAudioTrack);
+
+        if (audioSender.track) {
+          audioSender.track.stop();
+        }
+
+        localStorage.setItem("preferredMicrophoneInput", deviceId || "default");
+        console.log("Microphone changed to:", deviceId || "default");
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error("Error setting microphone:", error);
+      this.showAudioError("Failed to change microphone");
+      return false;
+    }
+  }
+
+  showAudioError(message) {
+    const errorDiv = document.createElement("div");
+    errorDiv.style.cssText = `
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          background: rgb(var(--color-bad));
+          color: white;
+          padding: 10px 15px;
+          border-radius: 5px;
+          z-index: 999999;
+          font-size: 14px;
+      `;
+    errorDiv.textContent = message;
+    document.body.appendChild(errorDiv);
+
+    setTimeout(() => errorDiv.remove(), 3000);
+  }
+
+  async setAudioOutput(deviceId) {
+    try {
+      console.log("Trying to set audio output to:", deviceId);
+
+      const remoteVideo = document.getElementById("remote");
+      const localVideo = document.getElementById("local");
+
+      if (remoteVideo && typeof remoteVideo.setSinkId === "function") {
+        try {
+          await remoteVideo.setSinkId(deviceId);
+          console.log("Remote video sink set successfully");
+        } catch (e) {
+          console.error("Failed to set remote sink:", e);
+          throw e;
+        }
+      }
+
+      if (localVideo && typeof localVideo.setSinkId === "function") {
+        try {
+          await localVideo.setSinkId(deviceId);
+          console.log("Local video sink set successfully");
+        } catch (e) {
+          console.warn("Failed to set local sink:", e);
+        }
+      }
+
+      const audioElements = document.querySelectorAll("audio");
+      for (let audio of audioElements) {
+        if (typeof audio.setSinkId === "function") {
+          try {
+            await audio.setSinkId(deviceId);
+          } catch (e) {
+            console.warn("Failed to set audio sink:", e);
+          }
+        }
+      }
+
+      localStorage.setItem("preferredAudioOutput", deviceId || "default");
+      console.log(
+        "Audio output successfully changed to:",
+        deviceId || "default",
+      );
+      return true;
+    } catch (error) {
+      console.error("Error setting audio output:", error);
+      this.showAudioError("Failed to change audio output");
+      return false;
+    }
+  }
+
+  async switchToEarpiece() {
+    if (window.cordova && window.plugins && window.plugins.audioManagement) {
+      try {
+        await window.plugins.audioManagement.setAudioMode("earpiece");
+        return true;
+      } catch (error) {
+        console.error("Error switching to earpiece:", error);
+      }
+    }
+    return false;
+  }
+
+  async switchToSpeaker() {
+    if (window.cordova && window.plugins && window.plugins.audioManagement) {
+      try {
+        await window.plugins.audioManagement.setAudioMode("speaker");
+        return true;
+      } catch (error) {
+        console.error("Error switching to speaker:", error);
+      }
+    }
+    return false;
+  }
+
+  initAudioEventListeners() {
+    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+      navigator.mediaDevices.addEventListener("devicechange", async () => {
+        const devices = await this.getAudioDevices();
+
+        const headphones = devices.speakers.find(
+          (device) =>
+            device.label.toLowerCase().includes("headphone") ||
+            device.label.toLowerCase().includes("bluetooth") ||
+            device.label.toLowerCase().includes("airpod"),
+        );
+
+        if (headphones && this.activeCall) {
+          await this.setAudioOutput(headphones.deviceId);
+        }
+      });
+    }
+  }
+
+  templates = {
+    incomingCall: function (call) {
+      const _isVideoCall = isVideoCall(call.type);
+      const callTypeDescriptionKey = _isVideoCall
+        ? "incomingVideoCall"
+        : "incomingAudioCall";
+      return `
 			<div class="bc-incoming-call">
 				<div class="user">
 					<div class="avatar">
@@ -51,25 +215,25 @@ class BastyonCalls extends EventEmitter {
 					<div class="title">
 						<div class="name">${call.initiator.source.name}</div>
 						<div class="description">${this.options.getWithLocale(
-							callTypeDescriptionKey
-						)}</div>
+              callTypeDescriptionKey,
+            )}</div>
 					</div>
 				</div>
 				<div class="buttons">
 					<button class="bc-btn bc-decline" id="bc-decline"><i class="fas fa-phone"></i></button>
 					${
-						!!_isVideoCall ?
-				'<button class="bc-btn bc-answer" id="bc-answer-video"><i class="fa fa-video"></i></button>'
-				: ''
-					}
+            !!_isVideoCall
+              ? '<button class="bc-btn bc-answer" id="bc-answer-video"><i class="fa fa-video"></i></button>'
+              : ""
+          }
 					<button class="bc-btn bc-answer " id="bc-answer-voice"><i class="fas fa-flip-horizontal fa-phone"></i></button>
-					
+
 				</div>
 			</div>
 		`;
-		},
-		endedCall: function (call) {
-			return `	
+    },
+    endedCall: function (call) {
+      return `
 			<div class="bc-ended-call">
 				<div class="avatar">
 						${this.getAvatar(call)}
@@ -77,10 +241,10 @@ class BastyonCalls extends EventEmitter {
 				<div class="name">${this.activeCall.initiator.source.name}</div>
 				<div class="description">${this.options.getWithLocale("endedCall")}</div>
 			</div>`;
-		},
+    },
 
-		videoCall: function () {
-			return `
+    videoCall: function () {
+      return `
 			<div class="bc-topnav">
 				<div class="bc-call-info">
 					<div class="avatar">
@@ -110,17 +274,24 @@ class BastyonCalls extends EventEmitter {
 				</div>
 			</div>
 			<div class="bc-controls" data-call-type="video" id="controls">
-				<button disabled class="bc-btn bc-camera" id="bc-camera"><i class="fas fa-sync-alt"></i></button>
-				<button class="bc-btn bc-video-on call-update-control" disabled id="bc-video-on"><i class="fas fa-video"></i></button>
-				<button class="bc-btn bc-video-off call-update-control" id="bc-video-off"><i class="fas fa-video-slash"></i></button>
-				<button class="bc-btn bc-mute" id="bc-mute"><i class="fas fa-microphone"></i></button>
+			  <button disabled class="bc-btn bc-camera" id="bc-camera"><i class="fas fa-sync-alt"></i></button>
+			  <button class="bc-btn bc-video-on call-update-control" disabled id="bc-video-on"><i class="fas fa-video"></i></button>
+			  <button class="bc-btn bc-video-off call-update-control" id="bc-video-off"><i class="fas fa-video-slash"></i></button>
+				<div class="bc-control-group">
+					<div class="bc-device-selector">
+						<button class="bc-btn bc-mute" id="bc-mute" title="Microphone"><i class="fas fa-microphone"></i></button>
+					</div>
+					<button class="bc-selector-button" id="bc-audio-selector" title="Audio Settings">
+						<i class="fas fa-chevron-up"></i>
+					</button>
+				</div>
 				<button class="bc-btn bc-decline" id="bc-decline"><i class="fas fa-phone"></i></button>
 				<button class="bc-btn bc-expand" id="bc-expand"><i class="fas fa-expand"></i></button>
-			</div>
+</div>
 		`;
-		},
-		voiceCall: function () {
-			return `<div class="bc-topnav">
+    },
+    voiceCall: function () {
+      return `<div class="bc-topnav">
 				<div class="bc-call-info">
 					<div class="avatar">
 						${this.getAvatar()}
@@ -149,300 +320,292 @@ class BastyonCalls extends EventEmitter {
 				</div>
 			</div>
 			<div data-call-type="voice" class="bc-controls voice" id="controls">
-				<button class="bc-btn bc-camera" disabled id="bc-camera"><i class="fas fa-sync-alt"></i></button>
+			  <button class="bc-btn bc-camera" disabled id="bc-camera"><i class="fas fa-sync-alt"></i></button>
 				<button class="bc-btn bc-video-on call-update-control" id="bc-video-on"><i class="fas fa-video"></i></button>
-				<button class="bc-btn bc-video-off call-update-control" disabled id="bc-video-off" ><i class="fas fa-video-slash"></i></button>
-				<button class="bc-btn bc-mute" id="bc-mute"><i class="fas fa-microphone"></i></button>
+				<button class="bc-btn bc-video-off call-update-control" disabled id="bc-video-off"><i class="fas fa-video-slash"></i></button>
+				<div class="bc-control-group">
+					<div class="bc-device-selector">
+						<button class="bc-btn bc-mute" id="bc-mute" title="Microphone"><i class="fas fa-microphone"></i></button>
+					</div>
+					<button class="bc-selector-button" id="bc-audio-selector" title="Audio Settings">
+						<i class="fas fa-chevron-up"></i>
+					</button>
+				</div>
 				<button class="bc-btn bc-decline" id="bc-decline"><i class="fas fa-phone"></i></button>
 				<button class="bc-btn bc-expand" id="bc-expand"><i class="fas fa-expand"></i></button>
-			</div>
+</div>
 		`;
-		},
-	};
+    },
+  };
 
-	renderTemplates = {
-		/**
-		 * @param {keyof CallTypes} callType
-		 */
-		call: (type) => {
-			if (!this.root) return;
+  renderTemplates = {
+    /**
+     * @param {keyof CallTypes} callType
+     */
+    call: (type) => {
+      if (!this.root) return;
 
-			const controls = document.getElementById("controls");
-			const existingCallTemplate = !!controls;
-			const _isVideoCall = isVideoCall(type);
+      const controls = document.getElementById("controls");
+      const existingCallTemplate = !!controls;
+      const _isVideoCall = isVideoCall(type);
 
-			// Update elements without re-rendering the entire call template
-			if (existingCallTemplate) {
-				const cameraButton = document.getElementById("bc-camera");
-				const localVideo = document.getElementById("local");
+      // Update elements without re-rendering the entire call template
+      if (existingCallTemplate) {
+        const cameraButton = document.getElementById("bc-camera");
+        const localVideo = document.getElementById("local");
 
-				controls.dataset.callType = type;
-				if (cameraButton) cameraButton.disabled = !_isVideoCall;
-				if (localVideo) localVideo.classList.toggle("hidden", !_isVideoCall);
-			} else {
-				const callTemplate = this.templates[`${type}Call`];
-				if (!callTemplate) throw Error(`No template for ${type}`);
+        controls.dataset.callType = type;
+        if (cameraButton) cameraButton.disabled = !_isVideoCall;
+        if (localVideo) localVideo.classList.toggle("hidden", !_isVideoCall);
+      } else {
+        const callTemplate = this.templates[`${type}Call`];
+        if (!callTemplate) throw Error(`No template for ${type}`);
 
-				this.root.innerHTML = callTemplate?.call(this) || "";
-				this.initCallInterface(`videoCall`);
-			}
-		},
-		incomingCall: (call) => {
-			if (!this.notify) return;
+        this.root.innerHTML = callTemplate?.call(this) || "";
+        this.initCallInterface(`videoCall`);
+      }
+    },
+    incomingCall: (call) => {
+      if (!this.notify) return;
 
-			if (
-				this?.activeCall?.state === "ringing" &&
-				this?.activeCall?.callId !== call.callId
-			) {
-				call.reject("busy");
-				return;
-			}
-			this.notify.innerHTML =
-				this.templates["incomingCall"]?.call(this, call) || "";
-			this.initCallInterface("incomingCall", call);
-		},
-		clearNotify: () => {
-			if (!this.notify) return;
+      if (
+        this?.activeCall?.state === "ringing" &&
+        this?.activeCall?.callId !== call.callId
+      ) {
+        call.reject("busy");
+        return;
+      }
+      this.notify.innerHTML =
+        this.templates["incomingCall"]?.call(this, call) || "";
+      this.initCallInterface("incomingCall", call);
+    },
+    clearNotify: () => {
+      if (!this.notify) return;
 
-			// console.log('clearNotify')
-			this.notify.innerHTML = "";
-		},
-		clearVideo: () => {
-			if (!this.root) return;
+      // console.log('clearNotify')
+      this.notify.innerHTML = "";
+    },
+    clearVideo: () => {
+      if (!this.root) return;
 
-			this.root.innerHTML = "";
-		},
-		clearInterface: () => {
-			if (!this.root) return;
+      this.root.innerHTML = "";
+    },
+    clearInterface: () => {
+      if (!this.root) return;
 
-			this.root.classList.remove("active");
-			this.cancelMini();
-			this.root.classList.remove("middle");
-			this.root.classList.remove("full");
-		},
-		endedCall: (call) => {
-			if (!this.root) return;
+      this.root.classList.remove("active");
+      this.cancelMini();
+      this.root.classList.remove("middle");
+      this.root.classList.remove("full");
+    },
+    endedCall: (call) => {
+      if (!this.root) return;
 
-			if (this.root.classList.contains("minified")) {
-				this.cancelMini();
-			}
+      if (this.root.classList.contains("minified")) {
+        this.cancelMini();
+      }
 
-			this.root.innerHTML = this.templates["endedCall"]?.call(this, call) || "";
-		},
-	};
+      this.root.innerHTML = this.templates["endedCall"]?.call(this, call) || "";
+    },
+  };
 
-	destroy() {
-		this.destroyed = true;
+  destroy() {
+    this.destroyed = true;
 
-		if (this.activeCall) this.activeCall.hangup();
-		if (this.secondCall) this.secondCall.hangup();
+    if (this.activeCall) this.activeCall.hangup();
+    if (this.secondCall) this.secondCall.hangup();
 
-		this.clearTimer();
-		this.clearBlinking();
-		clearInterval(this.syncInterval);
+    this.clearTimer();
+    this.clearBlinking();
+    clearInterval(this.syncInterval);
 
-		this.signal?.pause();
-		this.signal = null;
+    this.signal?.pause();
+    this.signal = null;
 
-		this.renderTemplates.clearInterface();
-		this.renderTemplates.clearVideo();
-		this.renderTemplates.clearNotify();
+    this.renderTemplates.clearInterface();
+    this.renderTemplates.clearVideo();
+    this.renderTemplates.clearNotify();
 
-		if (this.container) this.container.remove();
+    if (this.container) this.container.remove();
 
-		this.container = null;
-		this.root = null;
-		this.notify = null;
-	}
+    this.container = null;
+    this.root = null;
+    this.notify = null;
+  }
 
-	initTemplates(outerRoot) {
-		// console.log(outerRoot)
-		outerRoot.insertAdjacentHTML(
-			"beforeend",
-			`<div class="bc-container" id="bc-container"><div id="bc-notify" class="bc-notify"></div><div id="bc-root"></div></div>`
-		);
+  initTemplates(outerRoot) {
+    // console.log(outerRoot)
+    outerRoot.insertAdjacentHTML(
+      "beforeend",
+      `<div class="bc-container" id="bc-container"><div id="bc-notify" class="bc-notify"></div><div id="bc-root"></div></div>`,
+    );
 
-		this.root = document.getElementById("bc-root");
-		this.notify = document.getElementById("bc-notify");
-		this.container = document.getElementById("bc-container");
+    this.root = document.getElementById("bc-root");
+    this.notify = document.getElementById("bc-notify");
+    this.container = document.getElementById("bc-container");
 
-		if (window) {
-			window.onbeforeunload = () => {
-				if (this.activeCall) {
-					this.activeCall.hangup();
-				}
-			};
-		}
-	}
+    if (window) {
+      window.onbeforeunload = () => {
+        if (this.activeCall) {
+          this.activeCall.hangup();
+        }
+      };
+    }
+  }
 
-	initEvents() {
-		this.client.on("Call.incoming", async (call) => {
-			if (call.state == "fledgling") {
-				await pretry(() => {
-					return call.state != "fledgling";
-				}, 50);
-			}
+  initEvents() {
+    this.client.on("Call.incoming", async (call) => {
+      if (call.state == "fledgling") {
+        await pretry(() => {
+          return call.state != "fledgling";
+        }, 50);
+      }
 
-			if (call.hangupParty || call.hangupReason) {
-				return;
-			}
+      if (call.hangupParty || call.hangupReason) {
+        return;
+      }
 
-			this.clearBlinking();
-			this.setBlinking();
-			this.emit("initcall");
+      this.clearBlinking();
+      this.setBlinking();
+      this.emit("initcall");
 
-			if (this?.options?.onIncomingCall) {
-				this.options.onIncomingCall(call);
-			}
+      if (this?.options?.onIncomingCall) {
+        this.options.onIncomingCall(call);
+      }
 
-			let members = this.client.store.rooms[call.roomId].currentState.members;
-			let initiatorId = Object.keys(members).filter(
-				(m) => m !== this.client.credentials.userId
-			);
-			let initiator = members[initiatorId];
-			let user = members[this.client.credentials.userId];
-			// console.log('new call ', call)
-			call.initiator = initiator;
-			call.user = user;
-			this.options.getUserInfo(initiator.userId).then((res) => {
-				// console.log('user opt', res)
-				if (call.hangupParty || call.hangupReason) {
-					return;
-				}
-				initiator.source = res[0] || res;
-				this.addCallListeners(call);
-				if (!this.activeCall) {
-					// console.log('no active')
-					this.activeCall = call;
-				} else if (!this.secondCall) {
-					// console.log('no second')
-					this.secondCall = call;
-					if (this.activeCall.state !== "ringing") {
-						let a = new Audio("js/lib");
-						a.autoplay = true;
-						a.loop = true;
-						a.volume = 0.5;
+      let members = this.client.store.rooms[call.roomId].currentState.members;
+      let initiatorId = Object.keys(members).filter(
+        (m) => m !== this.client.credentials.userId,
+      );
+      let initiator = members[initiatorId];
+      let user = members[this.client.credentials.userId];
+      // console.log('new call ', call)
+      call.initiator = initiator;
+      call.user = user;
+      this.options.getUserInfo(initiator.userId).then((res) => {
+        // console.log('user opt', res)
+        if (call.hangupParty || call.hangupReason) {
+          return;
+        }
+        initiator.source = res[0] || res;
+        this.addCallListeners(call);
+        if (!this.activeCall) {
+          // console.log('no active')
+          this.activeCall = call;
+        } else if (!this.secondCall) {
+          // console.log('no second')
+          this.secondCall = call;
+          if (this.activeCall.state !== "ringing") {
+            this.showIncomingCall(call);
 
-						this.signal = a;
+            return;
+          }
+        } else {
+          // console.log('no place 1', call.state)
+          call.reject("busy");
+          // console.log('no place 2', call.state)
+          call.hangup("busy");
+          // console.log('no place 3', call.state)
 
-						this.signal.src = "sounds/incoming.mp3";
-						this.renderTemplates.incomingCall(call);
+          // console.log('all calls', this)
+        }
 
-						return;
-					}
-				} else {
-					// console.log('no place 1', call.state)
-					call.reject("busy");
-					// console.log('no place 2', call.state)
-					call.hangup("busy");
-					// console.log('no place 3', call.state)
+        this.showIncomingCall(call);
+      });
+    });
+  }
 
-					// console.log('all calls', this)
-				}
+  initSignals() {
+    this.signal = new Audio();
+  }
+  clearTimer() {
+    this.timer = null;
+    clearInterval(this.timeInterval);
+    this.timeInterval = null;
+  }
 
-				let a = new Audio("js/lib");
-				a.autoplay = true;
-				a.loop = true;
-				a.volume = 0.5;
+  initTimer() {
+    this.timer = 0;
+    let el = document.getElementById("time");
+    this.timeInterval = setInterval(
+      function () {
+        this.timer++;
+        let m = Math.floor(this.timer / 60);
+        let s = this.timer % 60;
+        el.innerHTML = `${m}:${s >= 10 ? s : "0" + s}`;
+      }.bind(this),
+      1000,
+    );
+  }
 
-				this.signal = a;
-				this.renderTemplates.incomingCall(call);
-				this.signal.src = "sounds/incoming.mp3";
-			});
-		});
-	}
+  /**
+   * @param {keyof CallTypes} callType
+   */
+  answer(callType = CallTypes.video) {
+    const _isVideoCall = isVideoCall(callType);
+    this.signal?.pause();
 
-	initSignals() {
-		this.signal = new Audio();
-	}
-	clearTimer() {
-		this.timer = null;
-		clearInterval(this.timeInterval);
-		this.timeInterval = null;
-	}
+    const answerActiveCall = () => this.activeCall.answer(true, _isVideoCall);
+    this.initCordovaPermisions(callType)
+      .then(() => {
+        try {
+          if (
+            this.activeCall.state !== "connected" &&
+            this.activeCall.state !== "ended"
+          ) {
+            answerActiveCall();
+            this.renderTemplates.clearNotify();
+            this.renderTemplates.call(callType);
+          } else {
+            this.isWaitingForConnect = true;
+            this.renderTemplates.clearNotify();
+            this.activeCall.hangup();
+            setTimeout(() => {
+              if (this.destroyed) return;
 
-	initTimer() {
-		this.timer = 0;
-		let el = document.getElementById("time");
-		this.timeInterval = setInterval(
-			function () {
-				this.timer++;
-				let m = Math.floor(this.timer / 60);
-				let s = this.timer % 60;
-				el.innerHTML = `${m}:${s >= 10 ? s : "0" + s}`;
-			}.bind(this),
-			1000
-		);
-	}
+              try {
+                answerActiveCall();
+                this.isWaitingForConnect = false;
+                this.renderTemplates.call(callType);
+              } catch (e) {
+                console.error("Ошибка при ответе на вторую линию", e);
+              }
+            }, 1000);
+          }
+        } catch (e) {
+          return Promise.reject(e);
+        }
 
-	/**
-	 * @param {keyof CallTypes} callType
-	 */
-	answer(callType = CallTypes.video) {
-		const _isVideoCall = isVideoCall(callType);
-		this.signal?.pause();
+        return Promise.resolve();
+      })
+      .catch((e) => {
+        console.error(e);
+      });
+  }
 
-		const answerActiveCall = () => this.activeCall.answer(true, _isVideoCall);
-		this.initCordovaPermisions(callType)
-			.then(() => {
-				try {
-					if (
-						this.activeCall.state !== "connected" &&
-						this.activeCall.state !== "ended"
-					) {
-						answerActiveCall();
-						this.renderTemplates.clearNotify();
-						this.renderTemplates.call(callType);
-					} else {
-						this.isWaitingForConnect = true;
-						this.renderTemplates.clearNotify();
-						this.activeCall.hangup();
-						setTimeout(() => {
-							if (this.destroyed) return;
+  initsync() {
+    let container = document.querySelector(".bc-video-container");
 
-							try {
-								answerActiveCall();
-								this.isWaitingForConnect = false;
-								this.renderTemplates.call(callType);
-							} catch (e) {
-								console.error("Ошибка при ответе на вторую линию", e);
-							}
-						}, 1000);
-					}
-				} catch (e) {
-					return Promise.reject(e);
-				}
+    this.activeCall.peerConn.getStats(null).then((stats) => {
+      let filtered = [...stats].filter((r) => {
+        return r[1].type === "candidate-pair";
+      });
+      filtered.forEach((c) => {
+        // console.log(stats.get(c.selectedCandidatePairId))
+      });
+    });
 
-				return Promise.resolve();
-			})
-			.catch((e) => {
-				console.error(e);
-			});
-	}
+    var inited = false;
 
-	initsync() {
-		let container = document.querySelector(".bc-video-container");
+    if (this.syncInterval) clearInterval(this.syncInterval);
 
-		this.activeCall.peerConn.getStats(null).then((stats) => {
-			let filtered = [...stats].filter((r) => {
-				return r[1].type === "candidate-pair";
-			});
-			filtered.forEach((c) => {
-				// console.log(stats.get(c.selectedCandidatePairId))
-			});
-		});
+    this.syncInterval = setInterval(() => {
+      if (this?.activeCall?.remoteUsermediaStream) {
+        let track = this.activeCall?.remoteUsermediaStream?.getVideoTracks()[0];
+        let aspectRatio = track?.getSettings().aspectRatio ?? 1.3;
+        const isVoiceCall = !track;
 
-		var inited = false;
-
-		if (this.syncInterval) clearInterval(this.syncInterval);
-
-		this.syncInterval = setInterval(() => {
-			if (this?.activeCall?.remoteUsermediaStream) {
-				let track = this.activeCall?.remoteUsermediaStream?.getVideoTracks()[0];
-				let aspectRatio = track?.getSettings().aspectRatio ?? 1.3;
-				const isVoiceCall = !track;
-
-				/*var hastrack = _.filter(this.activeCall.remoteUsermediaStream.getVideoTracks(), t => {
+        /*var hastrack = _.filter(this.activeCall.remoteUsermediaStream.getVideoTracks(), t => {
 					return t.readyState == 'live' && t.getSettings().aspectRatio
 				}).length + _.filter(this.activeCall.remoteUsermediaStream.getAudioTracks(), t => {
 					console.log("T" ,t, t.readyState, t.getSettings())
@@ -451,357 +614,407 @@ class BastyonCalls extends EventEmitter {
 
 				console.log('hastrack', hastrack)*/
 
-				if (
-					isVoiceCall ||
-					(track && aspectRatio) ||
-					(window.isios && window.isios())
-				) {
-					if (!inited) {
-						const remoteScene = document.getElementById("remote-scene");
-						if (!isVoiceCall) {
-							remoteScene.classList.remove("novid");
-						} else {
-							remoteScene.classList.add("novid");
-						}
-						remoteScene.classList.remove("connecting");
-					}
+        if (
+          isVoiceCall ||
+          (track && aspectRatio) ||
+          (window.isios && window.isios())
+        ) {
+          if (!inited) {
+            const remoteScene = document.getElementById("remote-scene");
+            if (!isVoiceCall) {
+              remoteScene.classList.remove("novid");
+            } else {
+              remoteScene.classList.add("novid");
+            }
+            remoteScene.classList.remove("connecting");
+          }
 
-					inited = true;
-				}
+          inited = true;
+        }
 
-				if (aspectRatio) {
-					container.style.aspectRatio = 1 / aspectRatio;
+        if (aspectRatio) {
+          container.style.aspectRatio = 1 / aspectRatio;
 
-					if (aspectRatio > 1) {
-						container.classList.add("vertical");
-					} else {
-						container.classList.remove("vertical");
-					}
+          if (aspectRatio > 1) {
+            container.classList.add("vertical");
+          } else {
+            container.classList.remove("vertical");
+          }
 
-					return;
-				} else {
-					if (container.style.aspectRatio != 1) container.style.aspectRatio = 1;
-				}
-			}
-		}, 300);
-	}
+          return;
+        } else {
+          if (container.style.aspectRatio != 1) container.style.aspectRatio = 1;
+        }
+      }
+    }, 300);
+  }
 
-	// play(e){
-	// 	e.target.play().catch(console.log)
-	// }
+  // play(e){
+  // 	e.target.play().catch(console.log)
+  // }
 
-	mute(e) {
-		e.stopPropagation();
+  mute(e) {
+    e.stopPropagation();
 
-		let sender = this.activeCall.peerConn.getSenders().find((s) => {
-			return s.track.kind === "audio";
-		});
+    let sender = this.activeCall.peerConn.getSenders().find((s) => {
+      return s.track.kind === "audio";
+    });
 
-		let control = document.querySelector(".bc-mute");
-		if (sender.track.enabled) {
-			control.firstChild.classList.remove("fa-microphone");
-			control.classList.add("active");
-			control.firstChild.classList.add("fa-microphone-slash");
-		} else {
-			control.firstChild.classList.remove("fa-microphone-slash");
-			control.classList.remove("active");
-			control.firstChild.classList.add("fa-microphone");
-		}
-		sender.track.enabled = !sender.track.enabled;
+    let control = document.querySelector(".bc-mute");
+    if (sender.track.enabled) {
+      control.firstChild.classList.remove("fa-microphone");
+      control.classList.add("active");
+      control.firstChild.classList.add("fa-microphone-slash");
+    } else {
+      control.firstChild.classList.remove("fa-microphone-slash");
+      control.classList.remove("active");
+      control.firstChild.classList.add("fa-microphone");
+    }
+    sender.track.enabled = !sender.track.enabled;
 
-		// console.log('mute',this.activeCall.peerConn.getSenders())
-	}
-	async handleCallUpdate(actionCallback) {
-		this.setCallUpdateControlsLoading(true);
+    // console.log('mute',this.activeCall.peerConn.getSenders())
+  }
+  async handleCallUpdate(actionCallback) {
+    this.setCallUpdateControlsLoading(true);
 
-		try {
-			await actionCallback();
-		} finally {
-			this.setCallUpdateControlsLoading(false);
-		}
-	}
-	setCallUpdateControlsLoading(isLoading) {
-		const elements = document.querySelectorAll(".call-update-control");
-		elements.forEach((element) => {
-			element.disabled = isLoading;
-			element.classList.toggle("loading", isLoading);
-		});
-	}
-	updateCall = async (callType) => {
-		await this.handleCallUpdate(async () => {
-			console.log("dasda");
+    try {
+      await actionCallback();
+    } finally {
+      this.setCallUpdateControlsLoading(false);
+    }
+  }
+  setCallUpdateControlsLoading(isLoading) {
+    const elements = document.querySelectorAll(".call-update-control");
+    elements.forEach((element) => {
+      element.disabled = isLoading;
+      element.classList.toggle("loading", isLoading);
+    });
+  }
+  updateCall = async (callType) => {
+    await this.handleCallUpdate(async () => {
+      console.log("dasda");
 
-			const isVideoCallEnabled = isVideoCall(callType);
+      const isVideoCallEnabled = isVideoCall(callType);
 
-			if (isVideoCallEnabled) {
-				await this.activeCall.upgradeCall(true, true);
-			} else {
-				this.activeCall.setLocalVideoMuted(true);
-			}
+      if (isVideoCallEnabled) {
+        await this.activeCall.upgradeCall(true, true);
+      } else {
+        this.activeCall.setLocalVideoMuted(true);
+      }
 
-			this.renderTemplates.call(callType);
-		});
-	};
-	hide(e) {
-		e.stopPropagation();
-		let sender = this.activeCall.peerConn.getSenders().find((s) => {
-			return s.track?.kind === "video" || !s.track;
-		});
+      this.renderTemplates.call(callType);
+    });
+  };
+  hide(e) {
+    e.stopPropagation();
+    let sender = this.activeCall.peerConn.getSenders().find((s) => {
+      return s.track?.kind === "video" || !s.track;
+    });
 
-		if (sender.track.enabled) {
-		} else {
-		}
+    if (sender.track.enabled) {
+    } else {
+    }
 
-		sender.track.enabled = !sender.track.enabled;
-		// console.log('hide',this.activeCall.peerConn.getSenders(), this.activeCall.peerConn.getReceivers())
-		// console.log('remote tracks',this.activeCall.remoteStream.getTracks())
-	}
+    sender.track.enabled = !sender.track.enabled;
+    // console.log('hide',this.activeCall.peerConn.getSenders(), this.activeCall.peerConn.getReceivers())
+    // console.log('remote tracks',this.activeCall.remoteStream.getTracks())
+  }
 
-	cameraCount() {
-		navigator.mediaDevices.enumerateDevices().then((devices) => {
-			let cameras = devices.filter((d) => d.kind === "videoinput");
-			// console.log(cameras)
-			if (cameras.length <= 1) {
-				document.getElementById("bc-camera").style.display = "none";
-				// console.log('no cameras')
-			}
-		});
-	}
+  cameraCount() {
+    navigator.mediaDevices.enumerateDevices().then((devices) => {
+      let cameras = devices.filter((d) => d.kind === "videoinput");
+      // console.log(cameras)
+      if (cameras.length <= 1) {
+        document.getElementById("bc-camera").style.display = "none";
+        // console.log('no cameras')
+      }
+    });
+  }
 
-	devices() {
-		return navigator.mediaDevices.enumerateDevices().then((devices = []) => {
-			if (window.cordova && window.cordova.plugins.EnumerateDevicesPlugin) {
-				return cordova.plugins.EnumerateDevicesPlugin.getEnumerateDevices().then(
-					(cdevices = []) => {
-						var usedids = {};
-						var rdevices = [];
+  async getVideoDevices() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      return devices.filter((device) => device.kind === "videoinput");
+    } catch (error) {
+      console.error("Error getting video devices:", error);
+      return [];
+    }
+  }
 
-						cdevices.reverse();
-						console.log("cdevices", cdevices);
-						console.log("devices", devices);
-						devices.forEach((device) => {
-							var clone = {
-								deviceId: device.deviceId,
-								groupId: device.groupId,
-								kind: device.kind,
-								label: device.label,
-							};
+  devices() {
+    return navigator.mediaDevices.enumerateDevices().then((devices = []) => {
+      if (window.cordova && window.cordova.plugins.EnumerateDevicesPlugin) {
+        return cordova.plugins.EnumerateDevicesPlugin.getEnumerateDevices().then(
+          (cdevices = []) => {
+            var usedids = {};
+            var rdevices = [];
 
-							var match = cdevices.find((d, i) => {
-								return clone.kind == d.kind && !usedids[d.deviceId];
-							});
+            cdevices.reverse();
+            console.log("cdevices", cdevices);
+            console.log("devices", devices);
+            devices.forEach((device) => {
+              var clone = {
+                deviceId: device.deviceId,
+                groupId: device.groupId,
+                kind: device.kind,
+                label: device.label,
+              };
 
-							if (match) {
-								usedids[match.deviceId] = true;
+              var match = cdevices.find((d, i) => {
+                return clone.kind == d.kind && !usedids[d.deviceId];
+              });
 
-								if (!clone.label) {
-									clone.label = (match.label || "").toLowerCase();
-								}
-							}
+              if (match) {
+                usedids[match.deviceId] = true;
 
-							rdevices.push(clone);
-						});
-						console.log(rdevices);
-						return Promise.resolve(rdevices);
-					}
-				);
-			}
+                if (!clone.label) {
+                  clone.label = (match.label || "").toLowerCase();
+                }
+              }
 
-			return Promise.resolve(devices);
-		});
-	}
+              rdevices.push(clone);
+            });
+            console.log(rdevices);
+            return Promise.resolve(rdevices);
+          },
+        );
+      }
 
-	camera(e) {
-		let self = this;
+      return Promise.resolve(devices);
+    });
+  }
 
-		try {
-			this.devices()
-				.then((dev) => {
-					console.log("devices", dev);
+  camera(e) {
+    let self = this;
 
-					let video = dev.filter((d) => d.kind === "videoinput");
-					let target;
-					const senders = self.activeCall.peerConn.getSenders();
-					// console.log('senders', senders)
-					let sender = senders.find((s) => {
-						return s.track.kind === "video";
-					});
-					// console.log('sender', sender)
+    try {
+      this.devices()
+        .then((dev) => {
+          console.log("devices", dev);
 
-					console.log("video", video);
+          let video = dev.filter((d) => d.kind === "videoinput");
+          let target;
+          const senders = self.activeCall.peerConn.getSenders();
+          // console.log('senders', senders)
+          let sender = senders.find((s) => {
+            return s.track.kind === "video";
+          });
+          // console.log('sender', sender)
 
-					/*if (sender && sender?.label?.includes('front' || 'передней')){
-					// console.log('Front camera is active')
-					self.isFrontalCamera = true
-				}*/
-					// console.log('video list', video)
+          console.log("video", video);
 
-					console.log("sender", sender);
+          /*if (sender && sender?.label?.includes('front' || 'передней')){
+				// console.log('Front camera is active')
+				self.isFrontalCamera = true
+			}*/
+          // console.log('video list', video)
 
-					if (!sender) return;
+          console.log("sender", sender);
 
-					if (video.length > 1) {
-						if (
-							sender.track.label.includes("front") ||
-							sender.track.label.includes("передней")
-						) {
-							console.log("to back");
-							target = video.reverse().find((device) => {
-								return (
-									device.label.includes("back") ||
-									device.label.includes("задней")
-								);
-							});
-						} else if (
-							sender.track.label.includes("back") ||
-							sender.track.label.includes("задней")
-						) {
-							console.log("to front");
-							target = video.find((device) => {
-								return (
-									device.label.includes("front") ||
-									device.label.includes("передней")
-								);
-							});
-						} else {
-							console.log("no labeled");
-							target = video.find((device) => {
-								return device.label !== sender.track.label;
-							});
-						}
-					} else return;
+          if (!sender) return;
 
-					console.log("target", target);
+          if (video.length > 1) {
+            if (
+              sender.track.label.includes("front") ||
+              sender.track.label.includes("передней")
+            ) {
+              console.log("to back");
+              target = video.reverse().find((device) => {
+                return (
+                  device.label.includes("back") ||
+                  device.label.includes("задней")
+                );
+              });
+            } else if (
+              sender.track.label.includes("back") ||
+              sender.track.label.includes("задней")
+            ) {
+              console.log("to front");
+              target = video.find((device) => {
+                return (
+                  device.label.includes("front") ||
+                  device.label.includes("передней")
+                );
+              });
+            } else {
+              console.log("no labeled");
+              target = video.find((device) => {
+                return device.label !== sender.track.label;
+              });
+            }
+          } else return;
 
-					if (!target) return;
+          console.log("target", target);
 
-					let videoConstraints = {};
-					videoConstraints.deviceId = { exact: target.deviceId };
+          if (!target) return;
 
-					console.log("videoConstraints", videoConstraints);
+          let videoConstraints = {};
+          videoConstraints.deviceId = { exact: target.deviceId };
 
-					const constraints = {
-						video: videoConstraints,
-						audio: false,
-					};
-					navigator.mediaDevices
-						.getUserMedia(constraints)
-						.then((stream) => {
-							stream.getTracks().forEach(function (track) {
-								// console.log('track', track)
-								const sender = self.activeCall.peerConn
-									.getSenders()
-									.find((s) => {
-										return s.track.kind == track.kind;
-									});
-								// console.log('current stream ', sender)
-								if (sender.track.label === track.label) {
-									// console.log('same streams on change')
-									return;
-								}
-								if (track.muted) {
-									// console.log('track is unable', track)
-								}
-								sender.replaceTrack(track);
-								sender.track.stop();
-								self.videoStreams.local.srcObject = stream;
-							});
-							this.hide();
-						})
-						.catch(function (error) {
-							// console.log("Const stream: " + error.message);
-						});
-				})
-				.catch(function (error) {
-					// console.log( "Check: " + error.message);
-				});
-		} catch (e) {
-			// console.log('sa',e)
-		}
-	}
+          console.log("videoConstraints", videoConstraints);
 
-	format() {
-		console.log("format", this.root);
-		if (this.root.classList.contains("middle")) {
-			this.root.classList.remove("middle");
-			this.toFull();
-		} else if (this.root.classList.contains("full")) {
-			this.root.classList.remove("full");
-			this.toMiddle();
-		}
-	}
-	pip(e) {
-		console.log("E", e);
-		if (this.root.classList.contains("middle")) {
-			this.root.classList.remove("middle");
-			this.toMini();
-		} else if (this.root.classList.contains("full")) {
-			this.root.classList.remove("full");
-			this.toMini();
-		} else {
-			this.cancelMini();
-			this.toMiddle();
-		}
-	}
-	toMiddle() {
-		debugger;
-		this.root.classList.add("middle");
-		localStorage.setItem("callSizeSettings", "middle");
+          const constraints = {
+            video: videoConstraints,
+            audio: false,
+          };
+          navigator.mediaDevices
+            .getUserMedia(constraints)
+            .then((stream) => {
+              stream.getTracks().forEach(function (track) {
+                // console.log('track', track)
+                const sender = self.activeCall.peerConn
+                  .getSenders()
+                  .find((s) => {
+                    return s.track.kind == track.kind;
+                  });
+                // console.log('current stream ', sender)
+                if (sender.track.label === track.label) {
+                  // console.log('same streams on change')
+                  return;
+                }
+                if (track.muted) {
+                  // console.log('track is unable', track)
+                }
+                sender.replaceTrack(track);
+                sender.track.stop();
+                self.videoStreams.local.srcObject = stream;
+              });
+              this.hide();
+            })
+            .catch(function (error) {
+              // console.log("Const stream: " + error.message);
+            });
+        })
+        .catch(function (error) {
+          // console.log( "Check: " + error.message);
+        });
+    } catch (e) {
+      // console.log('sa',e)
+    }
+  }
 
-		this.view = "middle";
+  async switchCamera(deviceId) {
+    try {
+      if (!this.activeCall) return false;
 
-		if (this?.options?.changeView) {
-			this.options.changeView(this.activeCall, this);
-		}
-	}
-	toFull() {
-		this.root.classList.add("full");
-		localStorage.setItem("callSizeSettings", "full");
+      const constraints = {
+        video: deviceId ? { deviceId: { exact: deviceId } } : true,
+        audio: false,
+      };
 
-		this.view = "full";
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const newVideoTrack = newStream.getVideoTracks()[0];
 
-		if (this?.options?.changeView) {
-			this.options.changeView(this.activeCall, this);
-		}
-	}
+      const senders = this.activeCall.peerConn.getSenders();
+      const videoSender = senders.find(
+        (sender) => sender.track && sender.track.kind === "video",
+      );
 
-	getRootTranslate() {
-		var tr = (
-			(this.root.style.transform || "")
-				.replace("translate3d(", "")
-				.replace(")", "")
-				.replace(/px/g, "") || "0,0,0"
-		).split(",");
+      if (videoSender) {
+        const oldTrack = videoSender.track;
+        await videoSender.replaceTrack(newVideoTrack);
 
-		return {
-			x: Number(tr[0]),
-			y: Number(tr[1]),
-		};
-	}
+        const localVideo = document.getElementById("local");
+        if (localVideo) {
+          localVideo.srcObject = newStream;
+        }
 
-	setRootTranslate({ x, y }) {
-		window.requestAnimationFrame(() => {
-			this.root.style.transform =
-				"translate3d(" + (x || 0) + "px," + (y || 0) + "px,0px)";
-		});
-	}
+        if (oldTrack) {
+          oldTrack.stop();
+        }
 
-	toMini() {
-		this.root.classList.add("minified");
-		localStorage.setItem("callSizeSettings", "mini");
+        return true;
+      }
 
-		this.view = "mini";
+      return false;
+    } catch (error) {
+      console.error("Error switching camera:", error);
+      return false;
+    }
+  }
 
-		if (this?.options?.changeView) {
-			this.options.changeView(this.activeCall, this);
-		}
+  format() {
+    console.log("format", this.root);
+    if (this.root.classList.contains("middle")) {
+      this.root.classList.remove("middle");
+      this.toFull();
+    } else if (this.root.classList.contains("full")) {
+      this.root.classList.remove("full");
+      this.toMiddle();
+    }
+  }
+  pip(e) {
+    console.log("E", e);
+    if (this.root.classList.contains("middle")) {
+      this.root.classList.remove("middle");
+      this.toMini();
+    } else if (this.root.classList.contains("full")) {
+      this.root.classList.remove("full");
+      this.toMini();
+    } else {
+      this.cancelMini();
+      this.toMiddle();
+    }
+  }
+  toMiddle() {
+    debugger;
+    this.root.classList.add("middle");
+    localStorage.setItem("callSizeSettings", "middle");
 
-		/*if(typeof Hammer != 'undefined'){
+    this.view = "middle";
+
+    if (this?.options?.changeView) {
+      this.options.changeView(this.activeCall, this);
+    }
+  }
+  toFull() {
+    this.root.classList.add("full");
+    localStorage.setItem("callSizeSettings", "full");
+
+    this.view = "full";
+
+    if (this?.options?.changeView) {
+      this.options.changeView(this.activeCall, this);
+    }
+  }
+
+  getRootTranslate() {
+    var tr = (
+      (this.root.style.transform || "")
+        .replace("translate3d(", "")
+        .replace(")", "")
+        .replace(/px/g, "") || "0,0,0"
+    ).split(",");
+
+    return {
+      x: Number(tr[0]),
+      y: Number(tr[1]),
+    };
+  }
+
+  setRootTranslate({ x, y }) {
+    window.requestAnimationFrame(() => {
+      this.root.style.transform =
+        "translate3d(" + (x || 0) + "px," + (y || 0) + "px,0px)";
+    });
+  }
+
+  toMini() {
+    this.root.classList.add("minified");
+    localStorage.setItem("callSizeSettings", "mini");
+
+    this.view = "mini";
+
+    if (this?.options?.changeView) {
+      this.options.changeView(this.activeCall, this);
+    }
+
+    /*if(typeof Hammer != 'undefined'){
 			console.log("HAMMER")
 			this.hammertime = new Hammer(this.root);
 
 			this.hammertime.get('pan').set({ threshold: 20, direction: Hammer.DIRECTION_ALL });
-	
+
 
 			var x = 0, y = 0, started = false
 
@@ -813,7 +1026,7 @@ class BastyonCalls extends EventEmitter {
 
 					var rt = this.getRootTranslate()
 
-					x = rt.x; 
+					x = rt.x;
 					y = rt.y
 
 					started = true
@@ -829,715 +1042,1083 @@ class BastyonCalls extends EventEmitter {
 					started = false
 				}
 
-				
+
 			});
 		}
 
 		return*/
 
-		let pos = JSON.parse(localStorage.getItem("callPositionSettings"));
+    let pos = JSON.parse(localStorage.getItem("callPositionSettings"));
 
-		console.log("pospos", pos);
+    console.log("pospos", pos);
 
-		if (pos && pos.top && pos.left) {
-			this.root.style.bottom = "auto";
-			this.root.style.top = pos.top;
-			this.root.style.left = pos.left;
-		}
+    if (pos && pos.top && pos.left) {
+      this.root.style.bottom = "auto";
+      this.root.style.top = pos.top;
+      this.root.style.left = pos.left;
+    }
 
-		this.root.onmousedown = (event) => {
-			console.log("mouse down");
+    this.root.onmousedown = (event) => {
+      console.log("mouse down");
 
-			event.preventDefault();
-			if (event.target.classList.contains("bc-btn")) return;
-			let shiftLeft = event.clientX - this.root.getBoundingClientRect().left;
-			let shiftTop = event.clientY - this.root.getBoundingClientRect().top;
-			this.root.style.cursor = "grabbing";
-			this.root.style.zIndex = 10000000;
-			document.onmousemove = (e) => {
-				this.root.style.bottom = "auto";
-				if (e.pageY) {
-					if (
-						window.innerHeight - this.root.getBoundingClientRect().bottom >
-							10 &&
-						e.clientY - shiftTop > 10
-					) {
-						if (
-							window.innerHeight - this.root.offsetHeight - 11 >=
-							e.clientY - shiftTop
-						) {
-							this.root.style.top = this.getPercents(
-								"height",
-								e.clientY - shiftTop
-							);
-						}
-					} else if (
-						window.innerHeight - this.root.getBoundingClientRect().bottom <=
-							10 &&
-						e.movementY < 0
-					) {
-						this.root.style.top = this.getPercents(
-							"height",
-							window.innerHeight - this.root.offsetHeight - 11
-						);
-					} else {
-						console.log(
-							"y out",
-							window.innerHeight - this.root.getBoundingClientRect().bottom,
-							e.clientY - shiftTop
-						);
-					}
-				} else {
-					return;
-				}
-				if (e.pageX) {
-					if (
-						0 < e.clientX - shiftLeft &&
-						e.clientX - shiftLeft < 10 &&
-						e.movementX > 0
-					) {
-						this.root.style.left = e.pageX - shiftLeft + "px";
-					} else if (
-						e.clientX - shiftLeft > 10 &&
-						document.body.clientWidth -
-							this.root.getBoundingClientRect().left -
-							this.root.offsetWidth >
-							70
-					) {
-						if (
-							document.body.clientWidth - this.root.offsetWidth - 71 >=
-							e.pageX - shiftLeft
-						) {
-							this.root.style.left = this.getPercents(
-								"width",
-								e.pageX - shiftLeft
-							);
-						}
-					} else if (
-						document.body.clientWidth -
-							this.root.getBoundingClientRect().left -
-							this.root.offsetWidth <=
-							70 &&
-						e.movementX < 0
-					) {
-						this.root.style.left = this.root.style.left = this.getPercents(
-							"width",
-							document.body.clientWidth - this.root.offsetWidth - 71
-						);
-					} else {
-						console.log(
-							"x out",
-							document.body.clientWidth -
-								this.root.getBoundingClientRect().left -
-								this.root.offsetWidth
-						);
-					}
-				} else {
-					return;
-				}
-			};
+      event.preventDefault();
+      if (event.target.classList.contains("bc-btn")) return;
+      let shiftLeft = event.clientX - this.root.getBoundingClientRect().left;
+      let shiftTop = event.clientY - this.root.getBoundingClientRect().top;
+      this.root.style.cursor = "grabbing";
+      this.root.style.zIndex = 10000000;
+      document.onmousemove = (e) => {
+        this.root.style.bottom = "auto";
+        if (e.pageY) {
+          if (
+            window.innerHeight - this.root.getBoundingClientRect().bottom >
+              10 &&
+            e.clientY - shiftTop > 10
+          ) {
+            if (
+              window.innerHeight - this.root.offsetHeight - 11 >=
+              e.clientY - shiftTop
+            ) {
+              this.root.style.top = this.getPercents(
+                "height",
+                e.clientY - shiftTop,
+              );
+            }
+          } else if (
+            window.innerHeight - this.root.getBoundingClientRect().bottom <=
+              10 &&
+            e.movementY < 0
+          ) {
+            this.root.style.top = this.getPercents(
+              "height",
+              window.innerHeight - this.root.offsetHeight - 11,
+            );
+          } else {
+            console.log(
+              "y out",
+              window.innerHeight - this.root.getBoundingClientRect().bottom,
+              e.clientY - shiftTop,
+            );
+          }
+        } else {
+          return;
+        }
+        if (e.pageX) {
+          if (
+            0 < e.clientX - shiftLeft &&
+            e.clientX - shiftLeft < 10 &&
+            e.movementX > 0
+          ) {
+            this.root.style.left = e.pageX - shiftLeft + "px";
+          } else if (
+            e.clientX - shiftLeft > 10 &&
+            document.body.clientWidth -
+              this.root.getBoundingClientRect().left -
+              this.root.offsetWidth >
+              70
+          ) {
+            if (
+              document.body.clientWidth - this.root.offsetWidth - 71 >=
+              e.pageX - shiftLeft
+            ) {
+              this.root.style.left = this.getPercents(
+                "width",
+                e.pageX - shiftLeft,
+              );
+            }
+          } else if (
+            document.body.clientWidth -
+              this.root.getBoundingClientRect().left -
+              this.root.offsetWidth <=
+              70 &&
+            e.movementX < 0
+          ) {
+            this.root.style.left = this.root.style.left = this.getPercents(
+              "width",
+              document.body.clientWidth - this.root.offsetWidth - 71,
+            );
+          } else {
+            console.log(
+              "x out",
+              document.body.clientWidth -
+                this.root.getBoundingClientRect().left -
+                this.root.offsetWidth,
+            );
+          }
+        } else {
+          return;
+        }
+      };
 
-			document.onmouseleave = (event) => {
-				event.preventDefault();
-				console.log("leave");
-				document.onmousemove = null;
-				this.root.onmouseup = null;
-				this.root.ontouchend = null;
-			};
+      document.onmouseleave = (event) => {
+        event.preventDefault();
+        console.log("leave");
+        document.onmousemove = null;
+        this.root.onmouseup = null;
+        this.root.ontouchend = null;
+      };
 
-			document.onmouseup = (event) => {
-				console.log("mouse up");
-				localStorage.setItem(
-					"callPositionSettings",
-					JSON.stringify({
-						left: this.root.style.left,
-						top: this.root.style.top,
-					})
-				);
-				document.onmousemove = null;
-				this.root.style.cursor = "grab";
-				document.onmouseup = null;
-			};
-			document.ontouchend = (event) => {
-				localStorage.setItem(
-					"callPositionSettings",
-					JSON.stringify({
-						left: this.root.style.left,
-						top: this.root.style.top,
-					})
-				);
-				if (!event.target.classList.contains("bc-btn")) {
-					event.preventDefault();
-				}
-				document.onmousemove = null;
-				this.root.style.cursor = "grab";
-				document.ontouchend = null;
-			};
-			event.stopPropagation();
-		};
-		this.root.ondragstart = function () {
-			return false;
-		};
-	}
+      document.onmouseup = (event) => {
+        console.log("mouse up");
+        localStorage.setItem(
+          "callPositionSettings",
+          JSON.stringify({
+            left: this.root.style.left,
+            top: this.root.style.top,
+          }),
+        );
+        document.onmousemove = null;
+        this.root.style.cursor = "grab";
+        document.onmouseup = null;
+      };
+      document.ontouchend = (event) => {
+        localStorage.setItem(
+          "callPositionSettings",
+          JSON.stringify({
+            left: this.root.style.left,
+            top: this.root.style.top,
+          }),
+        );
+        if (!event.target.classList.contains("bc-btn")) {
+          event.preventDefault();
+        }
+        document.onmousemove = null;
+        this.root.style.cursor = "grab";
+        document.ontouchend = null;
+      };
+      event.stopPropagation();
+    };
+    this.root.ondragstart = function () {
+      return false;
+    };
+  }
 
-	getPercents(type, value) {
-		let res;
-		switch (type) {
-			case "width":
-				res = parseInt(value, 10) / window.innerWidth;
-				break;
-			case "height":
-				res = parseInt(value, 10) / window.innerHeight;
-				break;
-		}
-		return `${res * 100 + "%"}`;
-	}
+  getPercents(type, value) {
+    let res;
+    switch (type) {
+      case "width":
+        res = parseInt(value, 10) / window.innerWidth;
+        break;
+      case "height":
+        res = parseInt(value, 10) / window.innerHeight;
+        break;
+    }
+    return `${res * 100 + "%"}`;
+  }
 
-	cancelMini() {
-		this.root.classList.remove("minified");
+  cancelMini() {
+    this.root.classList.remove("minified");
 
-		if (this.hammertime) {
-			this.hammertime.off("pan");
-			this.hammertime.destroy();
-		}
+    if (this.hammertime) {
+      this.hammertime.off("pan");
+      this.hammertime.destroy();
+    }
 
-		document.onmousemove = null;
-		this.root.style = {};
-		this.root.onmousedown = null;
+    document.onmousemove = null;
+    this.root.style = {};
+    this.root.onmousedown = null;
 
-		if (this?.options?.onCancelMini) {
-			this.options.onCancelMini(this.activeCall, this);
-		}
-	}
+    if (this?.options?.onCancelMini) {
+      this.options.onCancelMini(this.activeCall, this);
+    }
+  }
 
-	/**
-	 * @param {string} roomId
-	 * @param {keyof CallTypes} [callType="video"]
-	 * @returns {Promise<MatrixCall>}
-	 */
-	initCall(roomId, callType = CallTypes.video) {
-		const _isVideoCall = isVideoCall(callType);
+  /**
+   * @param {string} roomId
+   * @param {keyof CallTypes} [callType="video"]
+   * @returns {Promise<MatrixCall>}
+   */
+  initCall(roomId, callType = CallTypes.video) {
+    const _isVideoCall = isVideoCall(callType);
 
-		if (this?.activeCall?.roomId === roomId) {
-			console.log("only one call in room", this?.activeCall?.state);
-			if (this?.activeCall?.state === "ringing") {
-				console.log("answer to incoming from same room");
-				this.answer(callType);
-			}
-			return Promise.reject();
-		}
+    if (this?.activeCall?.roomId === roomId) {
+      console.log("only one call in room", this?.activeCall?.state);
+      if (this?.activeCall?.state === "ringing") {
+        console.log("answer to incoming from same room");
+        this.answer(callType);
+      }
+      return Promise.reject();
+    }
 
-		console.log("init call");
+    console.log("init call");
 
-		return this.initCordovaPermisions(callType).then(() => {
-			let members = this.client.store.rooms[roomId].currentState.members;
+    return this.initCordovaPermisions(callType).then(() => {
+      let members = this.client.store.rooms[roomId].currentState.members;
 
-			let initiatorId = Object.keys(members).filter(
-				(m) => m !== this.client.credentials.userId
-			);
+      let initiatorId = Object.keys(members).filter(
+        (m) => m !== this.client.credentials.userId,
+      );
 
-			let initiator = members[initiatorId];
+      let initiator = members[initiatorId];
 
-			let user = members[this.client.credentials.userId];
+      let user = members[this.client.credentials.userId];
 
-			return this.options
-				.getUserInfo(initiator.userId)
-				.then((res) => {
-					initiator.source = res[0] || res;
+      return this.options
+        .getUserInfo(initiator.userId)
+        .then((res) => {
+          initiator.source = res[0] || res;
 
-					console.log(res, initiator);
+          console.log(res, initiator);
 
-					this.emit("initcall");
+          this.emit("initcall");
 
-					const call = this.matrixcs.createNewMatrixCall(this.client, roomId);
+          const call = this.matrixcs.createNewMatrixCall(this.client, roomId);
 
-					// console.log('after init',this.activeCall)
-					if (!this.activeCall) {
-						this.activeCall = call;
-					} else {
-						// console.log('You have active call',this.activeCall)
-						return;
-					}
+          // console.log('after init',this.activeCall)
+          if (!this.activeCall) {
+            this.activeCall = call;
+          } else {
+            // console.log('You have active call',this.activeCall)
+            return;
+          }
 
-					let a = new Audio("js/lib");
-					a.autoplay = true;
-					a.loop = true;
-					a.volume = 0.5;
-					this.signal = a;
+          let a = new Audio("js/lib");
+          a.autoplay = true;
+          a.loop = true;
+          a.volume = 0.5;
+          this.signal = a;
 
-					console.log("init call2");
+          console.log("init call2");
 
-					return call.placeCall(true, _isVideoCall).then(() => {
-						console.log("init call3");
+          return call.placeCall(true, _isVideoCall).then(() => {
+            console.log("init call3");
 
-						call.initiator = initiator;
-						call.user = user;
+            call.initiator = initiator;
+            call.user = user;
 
-						this.addCallListeners(call);
+            this.addCallListeners(call);
 
-						this.signal.src = "sounds/calling.mp3";
-						this.renderTemplates.call(callType);
+            this.signal.src = "sounds/calling.mp3";
+            this.renderTemplates.call(callType);
 
-						return call;
-					});
-				})
-				.catch((e) => {
-					console.log("get user info error", e);
-					return Promise.reject(e);
-				});
-		});
-	}
+            return call;
+          });
+        })
+        .catch((e) => {
+          console.log("get user info error", e);
+          return Promise.reject(e);
+        });
+    });
+  }
 
-	hexDecode(hex) {
-		var ch = 0;
-		var result = "";
-		for (var i = 2; i <= hex.length; i += 2) {
-			ch = parseInt(hex.substring(i - 2, i), 16);
-			if (ch >= 128) ch += 0x350;
-			ch = String.fromCharCode("0x" + ch?.toString(16));
-			result += ch;
-		}
-		return result;
-	}
+  hexDecode(hex) {
+    var ch = 0;
+    var result = "";
+    for (var i = 2; i <= hex.length; i += 2) {
+      ch = parseInt(hex.substring(i - 2, i), 16);
+      if (ch >= 128) ch += 0x350;
+      ch = String.fromCharCode("0x" + ch?.toString(16));
+      result += ch;
+    }
+    return result;
+  }
 
-	hangup(e) {
-		e.stopPropagation();
+  hangup(e) {
+    e.stopPropagation();
 
-		this.activeCall.hangup("ended", false);
-		this.renderTemplates.clearVideo();
+    this.activeCall.hangup("ended", false);
+    this.renderTemplates.clearVideo();
 
-		this.signal.pause();
-	}
+    this.signal.pause();
+  }
 
-	reject(call) {
-		call.reject("busy");
-		this.signal.pause();
-	}
-	setLocalElement() {
-		const st = this.activeCall.feeds.find(
-			(f) => f.userId === this.activeCall.user.userId
-		)?.stream;
-		try {
-			st && document.getElementById("local")
-				? document.getElementById("local").srcObject
-					? null
-					: (document.getElementById("local").srcObject = st)
-				: null;
-		} catch (e) {
-			console.log(e);
-		}
-	}
-	setRemoteElement() {
-		const st = this.activeCall.feeds.find(
-			(f) => f.userId !== this.activeCall.user.userId
-		)?.stream;
-		try {
-			st && document.getElementById("remote")
-				? (document.getElementById("remote").srcObject = st)
-				: null;
-		} catch (e) {
-			console.log(e);
-		}
-	}
+  reject(call) {
+    call.reject("busy");
+    this.signal.pause();
+  }
+  setLocalElement() {
+    const st = this.activeCall.feeds.find(
+      (f) => f.userId === this.activeCall.user.userId,
+    )?.stream;
+    try {
+      st && document.getElementById("local")
+        ? document.getElementById("local").srcObject
+          ? null
+          : (document.getElementById("local").srcObject = st)
+        : null;
+    } catch (e) {
+      console.log(e);
+    }
+  }
+  setRemoteElement() {
+    const st = this.activeCall.feeds.find(
+      (f) => f.userId !== this.activeCall.user.userId,
+    )?.stream;
+    try {
+      if (st && document.getElementById("remote")) {
+        document.getElementById("remote").srcObject = st;
 
-	initCallInterface(type, call) {
-		switch (type) {
-			case "incomingCall":
-				document
-					.getElementById("bc-answer-voice")
-					.addEventListener("click", () => this.answer(CallTypes.voice));
-				document
-					.getElementById("bc-answer-video")
-					?.addEventListener("click", () => this.answer(CallTypes.video));
-				document
-					.getElementById("bc-decline")
-					.addEventListener("click", () => this.reject(call));
-				break;
-			case "videoCall":
-				this.videoStreams = {
-					remote: document.getElementById("remote"),
-					local: document.getElementById("local"),
-				};
-				try {
-					console.log("init call interface", this.activeCall);
-					this.cameraCount();
-					this.root.style = {};
-					let size = localStorage.getItem("callSizeSettings")?.toString();
-					this.setLocalElement();
-					console.log("init with " + size);
-					switch (size) {
-						case "mini":
-							this.toMini();
-							break;
-						case "middle":
-							this.toMiddle();
-							break;
-						case "full":
-							this.toFull();
-							break;
-						default:
-							this.toMiddle();
-							break;
-					}
+        const preferredDevice = localStorage.getItem("preferredAudioOutput");
+        if (
+          preferredDevice &&
+          preferredDevice !== "default" &&
+          document.getElementById("remote").setSinkId
+        ) {
+          document
+            .getElementById("remote")
+            .setSinkId(preferredDevice)
+            .catch(console.error);
+        }
 
-					this.addVideoInterfaceListeners();
-				} catch (e) {
-					console.log("init interface error", e);
-				}
-				break;
-		}
-	}
-	addVideoInterfaceListeners() {
-		document
-			.getElementById("bc-decline")
-			?.addEventListener("click", (e) => this.hangup.call(this, e));
-		document
-			.getElementById("bc-mute")
-			?.addEventListener("click", (e) => this.mute.call(this, e));
-		document
-			.getElementById("bc-video-on")
-			?.addEventListener("click", (e) => this.updateCall(CallTypes.voice));
-		document
-			.getElementById("bc-video-off")
-			?.addEventListener("click", (e) => this.updateCall(CallTypes.video));
-		document
-			.getElementById("bc-camera")
-			?.addEventListener("click", (e) => this.camera.call(this, e));
-		document
-			.getElementById("bc-expand")
-			?.addEventListener("click", (e) => this.pip.call(this, e));
-		document
-			.getElementById("remote-scene")
-			?.addEventListener("click", (e) => this.pip.call(this, e));
-		document
-			.getElementById("bc-pip")
-			?.addEventListener("click", (e) => this.pip.call(this, e));
-		document
-			.getElementById("bc-format")
-			?.addEventListener("click", (e) => this.format.call(this, e));
-		// document.getElementById("bc-cog").addEventListener('click', (e) => this.settings.call(this,e))
-		// this.root.addEventListener('click',(e) => this.play.call(this,e))
-	}
+        this.updateAudioButtonState(preferredDevice || "default");
+      }
+    } catch (e) {
+      console.log(e);
+    }
+  }
 
-	updateCallElements() {
-		this.setRemoteElement();
-		this.setLocalElement();
-	}
-	addCallListeners(call) {
-		console.log("addCallListeners");
-		this.on("muteStateChanged", () => {
-			console.log("changed idas df as");
-		});
-		call.on("feeds_changed", (a, b) => {
-			console.log("feed", a);
-			this.updateCallElements();
-		});
+  initCallInterface(type, call) {
+    switch (type) {
+      case "incomingCall":
+        document
+          .getElementById("bc-answer-voice")
+          .addEventListener("click", () => this.answer(CallTypes.voice));
+        document
+          .getElementById("bc-answer-video")
+          ?.addEventListener("click", () => this.answer(CallTypes.video));
+        document
+          .getElementById("bc-decline")
+          .addEventListener("click", () => this.reject(call));
+        break;
+      case "videoCall":
+        this.videoStreams = {
+          remote: document.getElementById("remote"),
+          local: document.getElementById("local"),
+        };
+        try {
+          console.log("init call interface", this.activeCall);
+          this.cameraCount();
+          this.root.style = {};
+          let size = localStorage.getItem("callSizeSettings")?.toString();
+          this.setLocalElement();
+          console.log("init with " + size);
+          switch (size) {
+            case "mini":
+              this.toMini();
+              break;
+            case "middle":
+              this.toMiddle();
+              break;
+            case "full":
+              this.toFull();
+              break;
+            default:
+              this.toMiddle();
+              break;
+          }
 
-		this.client.on("Room.timeline", ({ event }) => {
-			const isCallNegotiationEvent =
-				event.type === "m.call.negotiate" &&
-				event.room_id === this?.activeCall?.roomId;
-			const isAnswerType = event.content?.description?.type === "answer";
+          this.addVideoInterfaceListeners();
+        } catch (e) {
+          console.log("init interface error", e);
+        }
+        break;
+    }
+  }
+  addVideoInterfaceListeners() {
+    document
+      .getElementById("bc-decline")
+      ?.addEventListener("click", (e) => this.hangup.call(this, e));
+    document
+      .getElementById("bc-mute")
+      ?.addEventListener("click", (e) => this.mute.call(this, e));
+    document
+      .getElementById("bc-video-on")
+      ?.addEventListener("click", (e) => this.updateCall(CallTypes.voice));
+    document
+      .getElementById("bc-video-off")
+      ?.addEventListener("click", (e) => this.updateCall(CallTypes.video));
+    document
+      .getElementById("bc-camera")
+      ?.addEventListener("click", (e) => this.camera.call(this, e));
+    document
+      .getElementById("bc-audio-selector")
+      ?.addEventListener("click", (e) => this.showAudioDevices.call(this, e));
+    document
+      .getElementById("bc-expand")
+      ?.addEventListener("click", (e) => this.pip.call(this, e));
+    document
+      .getElementById("remote-scene")
+      ?.addEventListener("click", (e) => this.pip.call(this, e));
+    document
+      .getElementById("bc-pip")
+      ?.addEventListener("click", (e) => this.pip.call(this, e));
+    document
+      .getElementById("bc-format")
+      ?.addEventListener("click", (e) => this.format.call(this, e));
+  }
 
-			if (isCallNegotiationEvent && isAnswerType) {
-				this.initsync();
-			}
-		});
-		call.on("state", (a, b) => {
-			console.log("state", a, call);
+  async showAudioDevices(e) {
+    e.stopPropagation();
 
-			if (a == "wait_local_media") {
-			}
+    const existingDropdown = document.querySelector(".bc-audio-dropdown");
+    if (existingDropdown) {
+      existingDropdown.remove();
+      return;
+    }
 
-			if (a === "connecting" || a === "invite_sent") {
-				this.signal.pause();
-				this.showConnecting();
-			}
+    const devices = await this.getAudioDevices();
+    const currentOutput =
+      localStorage.getItem("preferredAudioOutput") || "default";
+    const currentInput =
+      localStorage.getItem("preferredMicrophoneInput") || "default";
 
-			if (a === "connected") {
-				this.signal.pause();
-				this.showRemoteVideo();
+    const dropdown = document.createElement("div");
+    dropdown.className = "bc-audio-dropdown";
 
-				if (!this.timeInterval) {
-					this.initTimer();
-				} else {
-				}
-				this.clearBlinking();
-				this.initsync();
+    const speakerHeader = document.createElement("div");
+    speakerHeader.className = "bc-audio-dropdown-header";
+    speakerHeader.innerHTML =
+      '<i class="fas fa-volume-up"></i> Speakers / Headphones';
+    dropdown.appendChild(speakerHeader);
 
-				this.setCallUpdateControlsLoading(false);
-				if (this?.options?.onConnected) {
-					this.options.onConnected(call, this);
-				}
-			}
+    const defaultSpeaker = document.createElement("div");
+    defaultSpeaker.className = `bc-audio-dropdown-item ${currentOutput === "default" ? "selected" : ""}`;
+    defaultSpeaker.innerHTML = `
+          <i class="fas fa-volume-up"></i>
+          <span>Default Speaker</span>
+      `;
+    defaultSpeaker.addEventListener("click", async () => {
+      const success = await this.setAudioOutput("");
+      if (success) {
+        this.updateDropdownSelection(dropdown, defaultSpeaker, "speaker");
+        dropdown.remove();
+      }
+    });
+    dropdown.appendChild(defaultSpeaker);
 
-			if (a === "ended") {
-				this.clearTimer();
-				clearInterval(this.syncInterval);
-				this.syncInterval = null;
-				this.signal.pause();
-				this.clearBlinking();
-				if (this?.options?.onEnded) {
-					this.options.onEnded(call, this);
-				}
-			}
-		});
-		call.on("hangup", (call) => {
-			console.log("hangup", call);
-			//this.signal.loop = false
-			//this.signal.src = 'sounds/hangup.mp3'
-			clearInterval(this.syncInterval);
-			this.syncInterval = null;
-			console.log("Call ended", call.callId);
-			if (!call) {
-				this.renderTemplates.clearNotify();
+    devices.speakers.forEach((device, index) => {
+      const item = document.createElement("div");
+      item.className = `bc-audio-dropdown-item ${device.deviceId === currentOutput ? "selected" : ""}`;
 
-				return;
-			}
+      let icon = "fas fa-volume-up";
+      const label = device.label.toLowerCase();
+      if (label.includes("headphone") || label.includes("headset")) {
+        icon = "fas fa-headphones";
+      } else if (
+        label.includes("bluetooth") ||
+        label.includes("airpod") ||
+        label.includes("wh-")
+      ) {
+        icon = "fab fa-bluetooth-b";
+      }
 
-			if (call.callId === this.secondCall?.callId) {
-				this.secondCall = null;
-				if (this?.activeCall?.state !== "ringing") {
-					this.renderTemplates.clearNotify();
-				}
-				// console.log('second line ended', call.callId)
-			}
+      const deviceName = device.label || `Speaker ${index + 1}`;
+      item.innerHTML = `
+              <i class="${icon}"></i>
+              <span title="${deviceName}">${deviceName}</span>
+          `;
 
-			if (call.callId === this.activeCall?.callId) {
-				// console.log('first line ended', this)
+      item.addEventListener("click", async () => {
+        console.log("Setting audio output to:", device.deviceId);
+        const success = await this.setAudioOutput(device.deviceId);
+        if (success) {
+          this.updateDropdownSelection(dropdown, item, "speaker");
+          dropdown.remove();
+        }
+      });
 
-				if (this.isWaitingForConnect) {
-					this.activeCall = this.secondCall;
-					this.secondCall = null;
-					// console.log('second line is active', this.activeCall.callId)
-					return;
-				}
-				this.renderTemplates.clearVideo();
-				this.renderTemplates.clearNotify();
+      dropdown.appendChild(item);
+    });
 
-				if (call.hangupParty === "local" || call.localVideoElement) {
-					if (
-						this.root.classList.contains("minified") ||
-						!this.root.classList.length
-					) {
-						this.renderTemplates.clearVideo();
-						this.renderTemplates.clearInterface();
-						this.activeCall = null;
-						return;
-					}
-					this.renderTemplates.endedCall(call);
-					if (
-						call.hangupReason === "user_hangup" &&
-						!call.remoteStream &&
-						call.hangupParty !== "local"
-					) {
-						// console.log('busy', this.signal)
-						this.signal.loop = false;
-						this.signal.src = "sounds/busy.mp3";
-					}
-					setTimeout(() => {
-						this.renderTemplates.clearVideo();
-						this.renderTemplates.clearInterface();
-						this.activeCall = null;
-						// console.log('time out',this.activeCall)
-					}, 1000);
-					return;
-				}
+    const separator = document.createElement("div");
+    separator.className = "bc-audio-dropdown-separator";
+    dropdown.appendChild(separator);
 
-				this.signal.pause();
-				this.renderTemplates.clearInterface();
-				this.activeCall = null;
-			}
-		});
-		call.on("replaced", (call) => {
-			console.log("replaced", call);
-			console.log("old", this.activeCall);
-			this.activeCall = null;
-			this.signal.pause();
-			let members = this.client.store.rooms[call.roomId].currentState.members;
-			let initiatorId = Object.keys(members).filter(
-				(m) => m !== this.client.credentials.userId
-			);
-			let initiator = members[initiatorId];
-			let user = members[this.client.credentials.userId];
+    const micHeader = document.createElement("div");
+    micHeader.className = "bc-audio-dropdown-header";
+    micHeader.innerHTML = '<i class="fas fa-microphone"></i> Microphones';
+    dropdown.appendChild(micHeader);
 
-			call.initiator = initiator;
-			call.user = user;
-			this.options.getUserInfo(initiator.userId).then((res) => {
-				if (call.hangupParty || call.hangupReason) {
-					return;
-				}
-				initiator.source = res[0] || res;
-				this.addCallListeners(call);
-				console.log("listen added", this, call);
-				if (!this.activeCall) {
-					this.activeCall = call;
-					this.answer();
-					console.log("now active", this.activeCall);
-				} else if (!this.secondCall) {
-					this.secondCall = call;
-					console.log("now second", this.secondCall);
-					// console.log('nwe call in queue', call)
-				} else {
-					console.log("all lines");
-					call.hangup("busy");
-					call.reject("busy");
-					// console.log('all calls', this)
-				}
-				if (call.state === "wait_local_media") {
-					console.log("wait media!");
-					setTimeout(
-						function () {
-							this.answer();
-						}.bind(this),
-						1000
-					);
-				} else {
-					this.answer();
-				}
-			});
-		});
-		call.on("error", (err) => {
-			console.error("some error", err, this);
-			call.hangup("error");
-			this.signal.pause();
-			this.renderTemplates.clearVideo();
-			this.emit("error", err);
-		});
-	}
+    // Default microphone
+    const defaultMic = document.createElement("div");
+    defaultMic.className = `bc-audio-dropdown-item ${currentInput === "default" ? "selected" : ""}`;
+    defaultMic.innerHTML = `
+          <i class="fas fa-microphone"></i>
+          <span>Default Microphone</span>
+      `;
+    defaultMic.addEventListener("click", async () => {
+      const success = await this.setMicrophoneInput("");
+      if (success) {
+        this.updateDropdownSelection(dropdown, defaultMic, "microphone");
+        dropdown.remove();
+      }
+    });
+    dropdown.appendChild(defaultMic);
 
-	getAvatar(call) {
-		if (call?.initiator?.source?.image) {
-			return `<img src="${
-				typeof replaceArchiveInImage != "undefined"
-					? replaceArchiveInImage(call.initiator.source.image)
-					: call.initiator.source.image
-			}"/>`;
-		}
-		if (this.activeCall.initiator?.source?.image) {
-			return `<img src="${
-				typeof replaceArchiveInImage != "undefined"
-					? replaceArchiveInImage(this.activeCall.initiator.source.image)
-					: this.activeCall.initiator.source.image
-			}"/>`;
-		}
-		return `<span>${this.activeCall.initiator.source.name[0].toUpperCase()}</span>`;
-	}
+    // Microphones
+    devices.microphones.forEach((device, index) => {
+      const item = document.createElement("div");
+      item.className = `bc-audio-dropdown-item ${device.deviceId === currentInput ? "selected" : ""}`;
 
-	showRemoteVideo() {
-		this.setRemoteElement();
-	}
+      let icon = "fas fa-microphone";
+      const label = device.label.toLowerCase();
+      if (
+        label.includes("bluetooth") ||
+        label.includes("airpod") ||
+        label.includes("wh-")
+      ) {
+        icon = "fab fa-bluetooth-b";
+      } else if (label.includes("headset") || label.includes("headphone")) {
+        icon = "fas fa-headset";
+      }
 
-	showConnecting() {
-		document.getElementById("remote-scene").classList.add("connecting");
-	}
+      const deviceName = device.label || `Microphone ${index + 1}`;
+      item.innerHTML = `
+              <i class="${icon}"></i>
+              <span title="${deviceName}">${deviceName}</span>
+          `;
 
-	setBlinking() {
-		this.options.changeTitle
-			? this.options.changeTitle(this.options.getWithLocale("incomingCall"))
-			: "";
-	}
+      item.addEventListener("click", async () => {
+        const success = await this.setMicrophoneInput(device.deviceId);
+        if (success) {
+          this.updateDropdownSelection(dropdown, item, "microphone");
+          dropdown.remove();
+        }
+      });
 
-	clearBlinking() {
-		this.options.changeTitle ? this.options.changeTitle() : "";
-	}
+      dropdown.appendChild(item);
+    });
 
-	/**
-	 * @param {keyof CallTypes} [callType="video"]
-	 */
-	initCordovaPermisions(callType = CallTypes.video) {
-		const _isVideoCall = isVideoCall(callType);
-		return new Promise((resolve, reject) => {
-			if (window?.cordova) {
-				function error(e) {
-					console.log("Camera permission is not turned on");
+    document.body.appendChild(dropdown);
 
-					reject(e);
-				}
-				function success() {
-					console.log("camera is turned on");
-					setTimeout(() => {
-						resolve();
-					}, 50);
-				}
+    setTimeout(() => (dropdown.style.opacity = "1"), 10);
 
-				window.BSTMedia.permissions({ audio: true, video: _isVideoCall })
-					.then(success)
-					.catch(error);
-			} else {
-				(async () => {
-					try {
-						const isWebkit = !!navigator.webkitGetUserMedia;
-						let stream = await navigator.mediaDevices.getUserMedia({
-							audio: true,
-							video: _isVideoCall && {
-								facingMode: ["user", "environment"],
+    const closeDropdown = (event) => {
+      if (
+        !dropdown.contains(event.target) &&
+        !event.target.closest("#bc-audio-output")
+      ) {
+        dropdown.style.opacity = "0";
+        setTimeout(() => {
+          if (dropdown.parentNode) dropdown.remove();
+        }, 200);
+        document.removeEventListener("click", closeDropdown);
+      }
+    };
 
-								/* We want 640x360.	Chrome will give it only if we ask exactly,
+    setTimeout(() => {
+      document.addEventListener("click", closeDropdown);
+    }, 100);
+
+    setTimeout(() => {
+      if (dropdown.parentNode) {
+        dropdown.style.opacity = "0";
+        setTimeout(() => dropdown.remove(), 200);
+      }
+    }, 20000);
+  }
+
+  updateDropdownSelection(dropdown, selectedItem, type) {
+    const headers = dropdown.querySelectorAll(".bc-audio-dropdown-header");
+    let startHeader = null;
+    let endHeader = null;
+
+    if (type === "speaker") {
+      startHeader = Array.from(headers).find((h) =>
+        h.innerHTML.includes("Speakers"),
+      );
+      endHeader = Array.from(headers).find((h) =>
+        h.innerHTML.includes("Microphones"),
+      );
+    } else {
+      startHeader = Array.from(headers).find((h) =>
+        h.innerHTML.includes("Microphones"),
+      );
+    }
+
+    let current = startHeader?.nextElementSibling;
+    while (current && current !== endHeader) {
+      if (current.classList.contains("bc-audio-dropdown-item")) {
+        current.classList.remove("selected");
+      }
+      current = current.nextElementSibling;
+    }
+
+    selectedItem.classList.add("selected");
+  }
+  updateAudioButtonState(deviceId) {
+    const button = document.getElementById("bc-audio-output");
+    if (!button) return;
+
+    const devices = this.getAudioDevices();
+    devices.then((result) => {
+      const selectedDevice = result.speakers.find(
+        (d) => d.deviceId === deviceId,
+      );
+      let icon = "fas fa-volume-up";
+
+      if (selectedDevice) {
+        const label = selectedDevice.label.toLowerCase();
+        if (label.includes("headphone") || label.includes("headset")) {
+          icon = "fas fa-headphones";
+        } else if (label.includes("bluetooth") || label.includes("airpod")) {
+          icon = "fab fa-bluetooth-b";
+        }
+      }
+
+      button.innerHTML = `<i class="${icon}"></i>`;
+      button.classList.add("active");
+    });
+  }
+
+  async toggleSpeaker(e) {
+    e.stopPropagation();
+
+    const button = e.target.closest(".bc-speaker-toggle");
+    const isSpeaker = button.classList.contains("speaker-mode");
+
+    let success = false;
+
+    if (isSpeaker) {
+      success = await this.switchToEarpiece();
+      if (success) {
+        button.classList.remove("speaker-mode");
+        button.innerHTML = '<i class="fas fa-phone-volume"></i>';
+      }
+    } else {
+      success = await this.switchToSpeaker();
+      if (success) {
+        button.classList.add("speaker-mode");
+        button.innerHTML = '<i class="fas fa-volume-up"></i>';
+      }
+    }
+
+    if (!success && !window.cordova) {
+      try {
+        const devices = await this.getAudioDevices();
+        const speakers = devices.speakers;
+
+        if (speakers.length > 1) {
+          let targetDevice;
+          if (isSpeaker) {
+            targetDevice = speakers.find(
+              (d) =>
+                d.label.toLowerCase().includes("headphone") ||
+                d.label.toLowerCase().includes("earpiece") ||
+                d.label.toLowerCase().includes("bluetooth"),
+            );
+          } else {
+            targetDevice = speakers.find(
+              (d) =>
+                d.label.toLowerCase().includes("speaker") ||
+                (!d.label.toLowerCase().includes("headphone") &&
+                  !d.label.toLowerCase().includes("bluetooth")),
+            );
+          }
+
+          if (targetDevice) {
+            await this.setAudioOutput(targetDevice.deviceId);
+            button.classList.toggle("speaker-mode");
+            button.innerHTML = button.classList.contains("speaker-mode")
+              ? '<i class="fas fa-volume-up"></i>'
+              : '<i class="fas fa-phone-volume"></i>';
+          }
+        }
+      } catch (error) {
+        console.error("Failed to toggle speaker:", error);
+      }
+    }
+  }
+
+  updateCallElements() {
+    this.setRemoteElement();
+    this.setLocalElement();
+  }
+  addCallListeners(call) {
+    console.log("addCallListeners");
+    this.on("muteStateChanged", () => {
+      console.log("changed idas df as");
+    });
+    call.on("feeds_changed", (a, b) => {
+      console.log("feed", a);
+      this.updateCallElements();
+    });
+
+    this.client.on("Room.timeline", ({ event }) => {
+      const isCallNegotiationEvent =
+        event.type === "m.call.negotiate" &&
+        event.room_id === this?.activeCall?.roomId;
+      const isAnswerType = event.content?.description?.type === "answer";
+
+      if (isCallNegotiationEvent && isAnswerType) {
+        this.initsync();
+      }
+    });
+    call.on("state", (a, b) => {
+      console.log("state", a, call);
+
+      if (a == "wait_local_media") {
+      }
+
+      if (a === "connecting" || a === "invite_sent") {
+        this.signal.pause();
+        this.showConnecting();
+      }
+
+      if (a === "connected") {
+        this.signal.pause();
+        this.showRemoteVideo();
+
+        if (!this.timeInterval) {
+          this.initTimer();
+        } else {
+        }
+        this.clearBlinking();
+        this.initsync();
+
+        this.setCallUpdateControlsLoading(false);
+        if (this?.options?.onConnected) {
+          this.options.onConnected(call, this);
+        }
+      }
+
+      if (a === "ended") {
+        this.clearTimer();
+        clearInterval(this.syncInterval);
+        this.syncInterval = null;
+        this.signal.pause();
+        this.clearBlinking();
+        if (this?.options?.onEnded) {
+          this.options.onEnded(call, this);
+        }
+      }
+    });
+    call.on("hangup", (call) => {
+      console.log("hangup", call);
+      //this.signal.loop = false
+      //this.signal.src = 'sounds/hangup.mp3'
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+      console.log("Call ended", call.callId);
+      if (!call) {
+        this.renderTemplates.clearNotify();
+
+        return;
+      }
+
+      if (call.callId === this.secondCall?.callId) {
+        this.secondCall = null;
+        if (this?.activeCall?.state !== "ringing") {
+          this.renderTemplates.clearNotify();
+        }
+        // console.log('second line ended', call.callId)
+      }
+
+      if (call.callId === this.activeCall?.callId) {
+        // console.log('first line ended', this)
+
+        if (this.isWaitingForConnect) {
+          this.activeCall = this.secondCall;
+          this.secondCall = null;
+          // console.log('second line is active', this.activeCall.callId)
+          return;
+        }
+        this.renderTemplates.clearVideo();
+        this.renderTemplates.clearNotify();
+
+        if (call.hangupParty === "local" || call.localVideoElement) {
+          if (
+            this.root.classList.contains("minified") ||
+            !this.root.classList.length
+          ) {
+            this.renderTemplates.clearVideo();
+            this.renderTemplates.clearInterface();
+            this.activeCall = null;
+            return;
+          }
+          this.renderTemplates.endedCall(call);
+          if (
+            call.hangupReason === "user_hangup" &&
+            !call.remoteStream &&
+            call.hangupParty !== "local"
+          ) {
+            // console.log('busy', this.signal)
+            this.signal.loop = false;
+            this.signal.src = "sounds/busy.mp3";
+          }
+          setTimeout(() => {
+            this.renderTemplates.clearVideo();
+            this.renderTemplates.clearInterface();
+            this.activeCall = null;
+            // console.log('time out',this.activeCall)
+          }, 1000);
+          return;
+        }
+
+        this.signal.pause();
+        this.renderTemplates.clearInterface();
+        this.activeCall = null;
+      }
+    });
+    call.on("replaced", (call) => {
+      console.log("replaced", call);
+      console.log("old", this.activeCall);
+      this.activeCall = null;
+      this.signal.pause();
+      let members = this.client.store.rooms[call.roomId].currentState.members;
+      let initiatorId = Object.keys(members).filter(
+        (m) => m !== this.client.credentials.userId,
+      );
+      let initiator = members[initiatorId];
+      let user = members[this.client.credentials.userId];
+
+      call.initiator = initiator;
+      call.user = user;
+      this.options.getUserInfo(initiator.userId).then((res) => {
+        if (call.hangupParty || call.hangupReason) {
+          return;
+        }
+        initiator.source = res[0] || res;
+        this.addCallListeners(call);
+        console.log("listen added", this, call);
+        if (!this.activeCall) {
+          this.activeCall = call;
+          this.answer();
+          console.log("now active", this.activeCall);
+        } else if (!this.secondCall) {
+          this.secondCall = call;
+          console.log("now second", this.secondCall);
+          // console.log('nwe call in queue', call)
+        } else {
+          console.log("all lines");
+          call.hangup("busy");
+          call.reject("busy");
+          // console.log('all calls', this)
+        }
+        if (call.state === "wait_local_media") {
+          console.log("wait media!");
+          setTimeout(
+            function () {
+              this.answer();
+            }.bind(this),
+            1000,
+          );
+        } else {
+          this.answer();
+        }
+      });
+    });
+    call.on("error", (err) => {
+      console.error("some error", err, this);
+      call.hangup("error");
+      this.signal.pause();
+      this.renderTemplates.clearVideo();
+      this.emit("error", err);
+    });
+  }
+
+  getAvatar(call) {
+    if (call?.initiator?.source?.image) {
+      return `<img src="${
+        typeof replaceArchiveInImage != "undefined"
+          ? replaceArchiveInImage(call.initiator.source.image)
+          : call.initiator.source.image
+      }"/>`;
+    }
+    if (this.activeCall.initiator?.source?.image) {
+      return `<img src="${
+        typeof replaceArchiveInImage != "undefined"
+          ? replaceArchiveInImage(this.activeCall.initiator.source.image)
+          : this.activeCall.initiator.source.image
+      }"/>`;
+    }
+    return `<span>${this.activeCall.initiator.source.name[0].toUpperCase()}</span>`;
+  }
+
+  showRemoteVideo() {
+    this.setRemoteElement();
+  }
+
+  showConnecting() {
+    document.getElementById("remote-scene").classList.add("connecting");
+  }
+
+  setBlinking() {
+    this.options.changeTitle
+      ? this.options.changeTitle(this.options.getWithLocale("incomingCall"))
+      : "";
+  }
+
+  clearBlinking() {
+    this.options.changeTitle ? this.options.changeTitle() : "";
+  }
+
+  initCallKitIntegration() {
+    window.BastyonCallsInstance = this;
+    this.callKitCalls = {};
+  }
+
+  isCallKitAvailable() {
+    return !!(window.CallKitBridge && window.CallKitBridge.isAvailable());
+  }
+
+  generateUUID() {
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+      /[xy]/g,
+      function (c) {
+        var r = (Math.random() * 16) | 0;
+        var v = c == "x" ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      },
+    );
+  }
+
+  showIncomingCall(call) {
+    if (this.isCallKitAvailable()) {
+      const callUUID = this.generateUUID();
+      call.callKitUUID = callUUID;
+      this.callKitCalls[callUUID] = call;
+
+      const callerName = call.initiator?.source?.name || "Unknown";
+      const isVideo = call.type === "video";
+
+      window.CallKitBridge.showIncomingCall(callUUID, callerName, isVideo);
+    } else {
+      let a = new Audio("js/lib");
+      a.autoplay = true;
+      a.loop = true;
+      a.volume = 0.5;
+      this.signal = a;
+      this.signal.src = "sounds/incoming.mp3";
+      this.renderTemplates.incomingCall(call);
+    }
+  }
+
+  handleCallKitAnswer(data) {
+    const call = this.callKitCalls[data.callUUID];
+    if (call) {
+      const callType = data.isVideo ? CallTypes.video : CallTypes.voice;
+      this.answer(callType);
+    }
+  }
+
+  handleCallKitReject(data) {
+    const call = this.callKitCalls[data.callUUID];
+    if (call) {
+      this.reject(call);
+      delete this.callKitCalls[data.callUUID];
+    }
+  }
+
+  handleCallKitHangup(data) {
+    const call = this.callKitCalls[data.callUUID];
+    if (call) {
+      call.hangup();
+      delete this.callKitCalls[data.callUUID];
+    }
+  }
+
+  /**
+   * @param {keyof CallTypes} [callType="video"]
+   */
+  initCordovaPermisions(callType = CallTypes.video) {
+    const _isVideoCall = isVideoCall(callType);
+    return new Promise((resolve, reject) => {
+      if (window?.cordova) {
+        function error(e) {
+          console.log("Camera permission is not turned on");
+
+          reject(e);
+        }
+        function success() {
+          console.log("camera is turned on");
+          setTimeout(() => {
+            resolve();
+          }, 50);
+        }
+
+        window.BSTMedia.permissions({ audio: true, video: _isVideoCall })
+          .then(success)
+          .catch(error);
+      } else {
+        (async () => {
+          try {
+            const isWebkit = !!navigator.webkitGetUserMedia;
+            let stream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+              video: _isVideoCall && {
+                facingMode: ["user", "environment"],
+
+                /* We want 640x360.	Chrome will give it only if we ask exactly,
 									 FF refuses entirely if we ask exactly, so have to ask for ideal
 									 instead
 									 XXX: Is this still true?
 								 */
-								width: isWebkit
-									? {
-											exact: 640,
-										}
-									: {
-											ideal: 640,
-										},
-								height: isWebkit
-									? {
-											exact: 360,
-										}
-									: {
-											ideal: 360,
-										},
-							},
-						});
-						resolve();
+                width: isWebkit
+                  ? {
+                      exact: 640,
+                    }
+                  : {
+                      ideal: 640,
+                    },
+                height: isWebkit
+                  ? {
+                      exact: 360,
+                    }
+                  : {
+                      ideal: 360,
+                    },
+              },
+            });
+            resolve();
 
-						for (let track of stream.getTracks()) {
-							track.stop();
-						}
-						console.log("resolve", stream);
-					} catch (e) {
-						console.log("reject", e);
-						reject(e);
-					}
-				})();
-			}
-		});
-	}
+            for (let track of stream.getTracks()) {
+              track.stop();
+            }
+            console.log("resolve", stream);
+            if (
+              window.cordova &&
+              window.plugins &&
+              window.plugins.audioManagement
+            ) {
+              try {
+                await window.plugins.audioManagement.configureAudioSession({
+                  category: "playAndRecord",
+                  mode: "voiceChat",
+                  options: ["allowBluetooth", "allowBluetoothA2DP"],
+                });
+              } catch (error) {
+                console.error("Audio session configuration failed:", error);
+              }
+            }
+          } catch (e) {
+            console.log("reject", e);
+            reject(e);
+          }
+        })();
+      }
+    });
+  }
 }
 
 if (typeof retry == "undefined") {
-	var retry = function (_function, clbk, time, totaltime) {
-		if (_function()) {
-			if (clbk) clbk();
+  var retry = function (_function, clbk, time, totaltime) {
+    if (_function()) {
+      if (clbk) clbk();
 
-			return;
-		}
+      return;
+    }
 
-		if (!time) time = 20;
+    if (!time) time = 20;
 
-		var totalTimeCounter = 0;
+    var totalTimeCounter = 0;
 
-		var interval = setInterval(function () {
-			if (_function() || (totaltime && totaltime <= totalTimeCounter)) {
-				clearInterval(interval);
+    var interval = setInterval(function () {
+      if (_function() || (totaltime && totaltime <= totalTimeCounter)) {
+        clearInterval(interval);
 
-				if (clbk) clbk();
-			}
+        if (clbk) clbk();
+      }
 
-			totalTimeCounter += time;
-		}, time);
-	};
+      totalTimeCounter += time;
+    }, time);
+  };
 
-	var pretry = function (_function, time, totaltime) {
-		return new Promise((resolve, reject) => {
-			retry(_function, resolve, time, totaltime);
-		});
-	};
+  var pretry = function (_function, time, totaltime) {
+    return new Promise((resolve, reject) => {
+      retry(_function, resolve, time, totaltime);
+    });
+  };
 }
 
 window.BastyonCalls = BastyonCalls;
