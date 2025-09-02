@@ -1014,3 +1014,26 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 
 		.bc-expand
 			display: none
+
+.bc-btn
+	&.bc-screen-share
+		&.active
+			@include m-bc-acive
+
+		&:disabled
+			cursor: not-allowed
+			opacity: 0.5
+			background: rgba(var(--neutral-grad-2), .2)
+
+		i
+			pointer-events: none
+			color: rgb(var(--text-on-bg-ac-color))
+
+		&:hover:not(:disabled)
+			background: rgba(var(--neutral-grad-2), .6)
+
+		&.active:hover
+			background: rgba(var(--text-on-bg-ac-color), 0.9)
+
+			i
+				color: rgb(var(--text-color))

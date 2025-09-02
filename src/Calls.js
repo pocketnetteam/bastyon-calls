@@ -19,6 +19,7 @@ class BastyonCalls extends EventEmitter {
     /*this.initCordovaPermisions()*/ /// TODO
     this.options = options;
     this.initAudioEventListeners();
+    this.initCallKitIntegration();
     console.log("ss", client, matrixcs);
     console.log("dd", matrixcs);
   }
@@ -27,6 +28,14 @@ class BastyonCalls extends EventEmitter {
   isFrontalCamera = false;
   videoStreams = null;
   isMuted = false;
+  isScreenSharing = false;
+  isCompositeActive = false;
+  screenStream = null;
+  cameraStream = null;
+  originalVideoTrack = null;
+  compositeCanvas = null;
+  cameraVideoElement = null;
+  screenVideoElement = null;
   activeCall = null;
   secondCall = null;
   syncInterval = null;
@@ -37,6 +46,53 @@ class BastyonCalls extends EventEmitter {
   title = null;
   destroyed = false;
   view = "middle";
+
+  setupCallKit() {
+    if (window.cordova?.plugins?.CordovaCall) {
+      console.log("CallKit plugin found!");
+
+      try {
+        window.cordova?.plugins?.CordovaCall.setAppName(
+          "Bastyon",
+          () => console.log("App name set"),
+          (err) => console.error("App name error:", err),
+        );
+        window.CordovaCall.setIncludeInRecents(
+          true,
+          () => console.log("Include in recents enabled"),
+          (err) => console.error("Include in recents error:", err),
+        );
+
+        window.cordova.plugins.CordovaCall.on("answer", (data) => {
+          console.log("CallKit answered:", data);
+          this.handleCallKitAnswer(data);
+        });
+
+        window.cordova.plugins.CordovaCall.on("reject", (data) => {
+          console.log("CallKit rejected:", data);
+          this.handleCallKitReject(data);
+        });
+
+        window.cordova.plugins.CordovaCall.on("hangup", (data) => {
+          console.log("CallKit hangup:", data);
+          this.handleCallKitHangup(data);
+        });
+
+        console.log("CallKit initialized successfully");
+        this.callKitPlugin = window.cordova.plugins.CordovaCall;
+      } catch (error) {
+        console.error("CallKit initialization error:", error);
+      }
+    } else {
+      console.log("CallKit plugin not found");
+      console.log(
+        "Available globals:",
+        Object.keys(window).filter(
+          (k) => k.includes("Call") || k.includes("cordova"),
+        ),
+      );
+    }
+  }
 
   async getAudioDevices() {
     try {
@@ -157,30 +213,6 @@ class BastyonCalls extends EventEmitter {
     }
   }
 
-  async switchToEarpiece() {
-    if (window.cordova && window.plugins && window.plugins.audioManagement) {
-      try {
-        await window.plugins.audioManagement.setAudioMode("earpiece");
-        return true;
-      } catch (error) {
-        console.error("Error switching to earpiece:", error);
-      }
-    }
-    return false;
-  }
-
-  async switchToSpeaker() {
-    if (window.cordova && window.plugins && window.plugins.audioManagement) {
-      try {
-        await window.plugins.audioManagement.setAudioMode("speaker");
-        return true;
-      } catch (error) {
-        console.error("Error switching to speaker:", error);
-      }
-    }
-    return false;
-  }
-
   initAudioEventListeners() {
     if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
       navigator.mediaDevices.addEventListener("devicechange", async () => {
@@ -245,96 +277,95 @@ class BastyonCalls extends EventEmitter {
 
     videoCall: function () {
       return `
-			<div class="bc-topnav">
-				<div class="bc-call-info">
-					<div class="avatar">
-						${this.getAvatar()}
-					</div>
-					<div class="info">
-						<div class="name">${this.activeCall.initiator.source.name}</div>
-						<div class="time" id="time">0:00</div>
-					</div>
-				</div>
-				<div class="options">
-<!--					<button class="bc-btn bc-cog" id="bc-cog"><i class="fas fa-cog"></i></button>-->
-					<button class="bc-btn bc-pip" id="bc-pip"><i class="fas fa-minus"></i></button>
-					<button class="bc-btn bc-format" id="bc-format"><i class="fas"></i></button>
-				</div>
-			</div>
-			<div class="bc-video-container">
-				<div class="bc-video active novid" id="remote-scene">
-					<video id="remote" pip="false" autoplay disablePictureInPicture="true" playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
-					<div class="avatar">
-						${this.getAvatar()}
-					</div>
-					<div class="status">${this.options.getWithLocale("connecting")}</div>
-				</div>
-				<div class="bc-video minified">
-					<video id="local" muted pip="false" disablePictureInPicture="true" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
-				</div>
-			</div>
-			<div class="bc-controls" data-call-type="video" id="controls">
-			  <button disabled class="bc-btn bc-camera" id="bc-camera"><i class="fas fa-sync-alt"></i></button>
-			  <button class="bc-btn bc-video-on call-update-control" disabled id="bc-video-on"><i class="fas fa-video"></i></button>
-			  <button class="bc-btn bc-video-off call-update-control" id="bc-video-off"><i class="fas fa-video-slash"></i></button>
-				<div class="bc-control-group">
-					<div class="bc-device-selector">
-						<button class="bc-btn bc-mute" id="bc-mute" title="Microphone"><i class="fas fa-microphone"></i></button>
-					</div>
-					<button class="bc-selector-button" id="bc-audio-selector" title="Audio Settings">
-						<i class="fas fa-chevron-up"></i>
-					</button>
-				</div>
-				<button class="bc-btn bc-decline" id="bc-decline"><i class="fas fa-phone"></i></button>
-				<button class="bc-btn bc-expand" id="bc-expand"><i class="fas fa-expand"></i></button>
-</div>
-		`;
+        <div class="bc-topnav">
+          <div class="bc-call-info">
+            <div class="avatar">
+              ${this.getAvatar()}
+            </div>
+            <div class="info">
+              <div class="name">${this.activeCall.initiator.source.name}</div>
+              <div class="time" id="time">0:00</div>
+            </div>
+          </div>
+          <div class="options">
+            <button class="bc-btn bc-pip" id="bc-pip"><i class="fas fa-minus"></i></button>
+            <button class="bc-btn bc-format" id="bc-format"><i class="fas"></i></button>
+          </div>
+        </div>
+        <div class="bc-video-container">
+          <div class="bc-video active novid" id="remote-scene">
+            <video id="remote" pip="false" autoplay disablePictureInPicture="true" playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
+            <div class="avatar">
+              ${this.getAvatar()}
+            </div>
+            <div class="status">${this.options.getWithLocale("connecting")}</div>
+          </div>
+          <div class="bc-video minified">
+            <video id="local" muted pip="false" disablePictureInPicture="true" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
+          </div>
+        </div>
+        <div class="bc-controls" data-call-type="video" id="controls">
+          <button disabled class="bc-btn bc-camera" id="bc-camera"><i class="fas fa-sync-alt"></i></button>
+          <button class="bc-btn bc-screen-share" id="bc-screen-share" title="Screen Share"><i class="fas fa-desktop"></i></button>
+          <button class="bc-btn bc-video-on call-update-control" disabled id="bc-video-on"><i class="fas fa-video"></i></button>
+          <button class="bc-btn bc-video-off call-update-control" id="bc-video-off"><i class="fas fa-video-slash"></i></button>
+          <div class="bc-control-group">
+            <div class="bc-device-selector">
+              <button class="bc-btn bc-mute" id="bc-mute" title="Microphone"><i class="fas fa-microphone"></i></button>
+            </div>
+            <button class="bc-selector-button" id="bc-audio-selector" title="Audio Settings">
+              <i class="fas fa-chevron-up"></i>
+            </button>
+          </div>
+          <button class="bc-btn bc-decline" id="bc-decline"><i class="fas fa-phone"></i></button>
+          <button class="bc-btn bc-expand" id="bc-expand"><i class="fas fa-expand"></i></button>
+        </div>
+      `;
     },
     voiceCall: function () {
       return `<div class="bc-topnav">
-				<div class="bc-call-info">
-					<div class="avatar">
-						${this.getAvatar()}
-					</div>
-					<div class="info">
-						<div class="name">${this.activeCall.initiator.source.name}</div>
-						<div class="time" id="time">0:00</div>
-					</div>
-				</div>
-				<div class="options">
-<!--					<button class="bc-btn bc-cog" id="bc-cog"><i class="fas fa-cog"></i></button>-->
-					<button class="bc-btn bc-pip" id="bc-pip"><i class="fas fa-minus"></i></button>
-					<button class="bc-btn bc-format" id="bc-format"><i class="fas"></i></button>
-				</div>
-			</div>
-			<div class="bc-video-container">
-				<div class="bc-video active novid" id="remote-scene">
-					<video id="remote" pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
-					<div class="avatar">
-						${this.getAvatar()}
-					</div>
-					<div class="status">${this.options.getWithLocale("connecting")}</div>
-				</div>
-				<div class="bc-video minified">
-					<video id="local" class="hidden" muted pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
-				</div>
-			</div>
-			<div data-call-type="voice" class="bc-controls voice" id="controls">
-			  <button class="bc-btn bc-camera" disabled id="bc-camera"><i class="fas fa-sync-alt"></i></button>
-				<button class="bc-btn bc-video-on call-update-control" id="bc-video-on"><i class="fas fa-video"></i></button>
-				<button class="bc-btn bc-video-off call-update-control" disabled id="bc-video-off"><i class="fas fa-video-slash"></i></button>
-				<div class="bc-control-group">
-					<div class="bc-device-selector">
-						<button class="bc-btn bc-mute" id="bc-mute" title="Microphone"><i class="fas fa-microphone"></i></button>
-					</div>
-					<button class="bc-selector-button" id="bc-audio-selector" title="Audio Settings">
-						<i class="fas fa-chevron-up"></i>
-					</button>
-				</div>
-				<button class="bc-btn bc-decline" id="bc-decline"><i class="fas fa-phone"></i></button>
-				<button class="bc-btn bc-expand" id="bc-expand"><i class="fas fa-expand"></i></button>
-</div>
-		`;
+        <div class="bc-call-info">
+          <div class="avatar">
+            ${this.getAvatar()}
+          </div>
+          <div class="info">
+            <div class="name">${this.activeCall.initiator.source.name}</div>
+            <div class="time" id="time">0:00</div>
+          </div>
+        </div>
+        <div class="options">
+          <button class="bc-btn bc-pip" id="bc-pip"><i class="fas fa-minus"></i></button>
+          <button class="bc-btn bc-format" id="bc-format"><i class="fas"></i></button>
+        </div>
+      </div>
+      <div class="bc-video-container">
+        <div class="bc-video active novid" id="remote-scene">
+          <video id="remote" pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
+          <div class="avatar">
+            ${this.getAvatar()}
+          </div>
+          <div class="status">${this.options.getWithLocale("connecting")}</div>
+        </div>
+        <div class="bc-video minified">
+          <video id="local" class="hidden" muted pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
+        </div>
+      </div>
+      <div data-call-type="voice" class="bc-controls voice" id="controls">
+        <button class="bc-btn bc-camera" disabled id="bc-camera"><i class="fas fa-sync-alt"></i></button>
+        <button class="bc-btn bc-video-on call-update-control" id="bc-video-on"><i class="fas fa-video"></i></button>
+        <button class="bc-btn bc-video-off call-update-control" disabled id="bc-video-off"><i class="fas fa-video-slash"></i></button>
+        <div class="bc-control-group">
+          <div class="bc-device-selector">
+            <button class="bc-btn bc-mute" id="bc-mute" title="Microphone"><i class="fas fa-microphone"></i></button>
+          </div>
+          <button class="bc-selector-button" id="bc-audio-selector" title="Audio Settings">
+            <i class="fas fa-chevron-up"></i>
+          </button>
+        </div>
+        <button class="bc-btn bc-decline" id="bc-decline"><i class="fas fa-phone"></i></button>
+        <button class="bc-btn bc-expand" id="bc-expand"><i class="fas fa-expand"></i></button>
+      </div>
+    `;
     },
   };
 
@@ -414,6 +445,10 @@ class BastyonCalls extends EventEmitter {
 
     if (this.activeCall) this.activeCall.hangup();
     if (this.secondCall) this.secondCall.hangup();
+
+    if (this.isScreenSharing) {
+      this.stopScreenShare();
+    }
 
     this.clearTimer();
     this.clearBlinking();
@@ -692,8 +727,6 @@ class BastyonCalls extends EventEmitter {
   }
   updateCall = async (callType) => {
     await this.handleCallUpdate(async () => {
-      console.log("dasda");
-
       const isVideoCallEnabled = isVideoCall(callType);
 
       if (isVideoCallEnabled) {
@@ -703,6 +736,10 @@ class BastyonCalls extends EventEmitter {
       }
 
       this.renderTemplates.call(callType);
+
+      if (this.isScreenSharing && this.screenStream) {
+        this.updateInterfaceForScreenShare(this.screenStream);
+      }
     });
   };
   hide(e) {
@@ -1414,6 +1451,7 @@ class BastyonCalls extends EventEmitter {
         break;
     }
   }
+
   addVideoInterfaceListeners() {
     document
       .getElementById("bc-decline")
@@ -1430,6 +1468,9 @@ class BastyonCalls extends EventEmitter {
     document
       .getElementById("bc-camera")
       ?.addEventListener("click", (e) => this.camera.call(this, e));
+    document
+      .getElementById("bc-screen-share")
+      ?.addEventListener("click", (e) => this.toggleScreenShare.call(this, e));
     document
       .getElementById("bc-audio-selector")
       ?.addEventListener("click", (e) => this.showAudioDevices.call(this, e));
@@ -1661,69 +1702,11 @@ class BastyonCalls extends EventEmitter {
     });
   }
 
-  async toggleSpeaker(e) {
-    e.stopPropagation();
-
-    const button = e.target.closest(".bc-speaker-toggle");
-    const isSpeaker = button.classList.contains("speaker-mode");
-
-    let success = false;
-
-    if (isSpeaker) {
-      success = await this.switchToEarpiece();
-      if (success) {
-        button.classList.remove("speaker-mode");
-        button.innerHTML = '<i class="fas fa-phone-volume"></i>';
-      }
-    } else {
-      success = await this.switchToSpeaker();
-      if (success) {
-        button.classList.add("speaker-mode");
-        button.innerHTML = '<i class="fas fa-volume-up"></i>';
-      }
-    }
-
-    if (!success && !window.cordova) {
-      try {
-        const devices = await this.getAudioDevices();
-        const speakers = devices.speakers;
-
-        if (speakers.length > 1) {
-          let targetDevice;
-          if (isSpeaker) {
-            targetDevice = speakers.find(
-              (d) =>
-                d.label.toLowerCase().includes("headphone") ||
-                d.label.toLowerCase().includes("earpiece") ||
-                d.label.toLowerCase().includes("bluetooth"),
-            );
-          } else {
-            targetDevice = speakers.find(
-              (d) =>
-                d.label.toLowerCase().includes("speaker") ||
-                (!d.label.toLowerCase().includes("headphone") &&
-                  !d.label.toLowerCase().includes("bluetooth")),
-            );
-          }
-
-          if (targetDevice) {
-            await this.setAudioOutput(targetDevice.deviceId);
-            button.classList.toggle("speaker-mode");
-            button.innerHTML = button.classList.contains("speaker-mode")
-              ? '<i class="fas fa-volume-up"></i>'
-              : '<i class="fas fa-phone-volume"></i>';
-          }
-        }
-      } catch (error) {
-        console.error("Failed to toggle speaker:", error);
-      }
-    }
-  }
-
   updateCallElements() {
     this.setRemoteElement();
     this.setLocalElement();
   }
+
   addCallListeners(call) {
     console.log("addCallListeners");
     this.on("muteStateChanged", () => {
@@ -1746,6 +1729,27 @@ class BastyonCalls extends EventEmitter {
     });
     call.on("state", (a, b) => {
       console.log("state", a, call);
+
+      if (window?.cordova?.plugins?.CordovaCall && call.callKitUUID) {
+        try {
+          if (a === "connected") {
+            window.cordova.plugins.CordovaCall.connectCall(
+              () => console.log("CallKit connected"),
+              (err) => console.error("CallKit connect error:", err),
+            );
+          } else if (a === "ended") {
+            window.cordova.plugins.CordovaCall.endCall(
+              () => console.log("CallKit ended"),
+              (err) => console.error("CallKit end error:", err),
+            );
+            if (this.callKitCalls[call.callKitUUID]) {
+              delete this.callKitCalls[call.callKitUUID];
+            }
+          }
+        } catch (error) {
+          console.error("CallKit state update error:", error);
+        }
+      }
 
       if (a == "wait_local_media") {
       }
@@ -1787,6 +1791,11 @@ class BastyonCalls extends EventEmitter {
       console.log("hangup", call);
       //this.signal.loop = false
       //this.signal.src = 'sounds/hangup.mp3'
+      //
+      //
+      if (this.isScreenSharing) {
+        this.stopScreenShare();
+      }
       clearInterval(this.syncInterval);
       this.syncInterval = null;
       console.log("Call ended", call.callId);
@@ -1946,6 +1955,10 @@ class BastyonCalls extends EventEmitter {
   initCallKitIntegration() {
     window.BastyonCallsInstance = this;
     this.callKitCalls = {};
+
+    if (window.cordova?.plugins?.CordovaCall) {
+      this.setupCallKit();
+    }
   }
 
   isCallKitAvailable() {
@@ -1964,24 +1977,42 @@ class BastyonCalls extends EventEmitter {
   }
 
   showIncomingCall(call) {
-    if (this.isCallKitAvailable()) {
+    if (window.cordova?.plugins?.CordovaCall) {
+      console.log("Using CallKit for incoming call");
+      console.log(call, "call");
       const callUUID = this.generateUUID();
       call.callKitUUID = callUUID;
+      if (!this.callKitCalls) {
+        this.callKitCalls = {};
+      }
       this.callKitCalls[callUUID] = call;
 
       const callerName = call.initiator?.source?.name || "Unknown";
-      const isVideo = call.type === "video";
 
-      window.CallKitBridge.showIncomingCall(callUUID, callerName, isVideo);
-    } else {
-      let a = new Audio("js/lib");
-      a.autoplay = true;
-      a.loop = true;
-      a.volume = 0.5;
-      this.signal = a;
-      this.signal.src = "sounds/incoming.mp3";
-      this.renderTemplates.incomingCall(call);
+      try {
+        window.cordova.plugins.CordovaCall.receiveCall(
+          callerName,
+          callUUID,
+          () => console.log("CallKit call displayed"),
+          (err) => {
+            console.error("CallKit receiveCall error:", err);
+            this.showWebIncomingCall(call);
+          },
+        );
+        return;
+      } catch (error) {
+        console.error("CallKit error:", error);
+      }
     }
+
+    console.log("Using web UI for incoming call");
+    let a = new Audio("js/lib");
+    a.autoplay = true;
+    a.loop = true;
+    a.volume = 0.5;
+    this.signal = a;
+    this.signal.src = "sounds/incoming.mp3";
+    this.renderTemplates.incomingCall(call);
   }
 
   handleCallKitAnswer(data) {
@@ -2006,6 +2037,656 @@ class BastyonCalls extends EventEmitter {
       call.hangup();
       delete this.callKitCalls[data.callUUID];
     }
+  }
+
+  async createCompositeStream(cameraStream, screenStream) {
+    try {
+      console.log("Creating composite stream...");
+
+      if (!screenStream || !screenStream.getVideoTracks().length) {
+        console.error("Invalid screen stream");
+        return null;
+      }
+
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      canvas.width = 1280;
+      canvas.height = 720;
+
+      const screenVideo = document.createElement("video");
+      screenVideo.srcObject = screenStream;
+      screenVideo.muted = true;
+      screenVideo.playsInline = true;
+
+      const cameraVideo = document.createElement("video");
+      let cameraReady = false;
+
+      if (cameraStream && cameraStream.getVideoTracks().length > 0) {
+        cameraVideo.srcObject = cameraStream;
+        cameraVideo.muted = true;
+        cameraVideo.playsInline = true;
+      }
+
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error("Screen video timeout")),
+          5000,
+        );
+
+        screenVideo.onloadeddata = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        screenVideo.onerror = (e) => {
+          clearTimeout(timeout);
+          reject(e);
+        };
+        screenVideo.play().catch(reject);
+      });
+
+      if (cameraStream && cameraStream.getVideoTracks().length > 0) {
+        try {
+          await new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+              console.log("Camera timeout, continuing without");
+              resolve();
+            }, 3000);
+
+            cameraVideo.onloadeddata = () => {
+              clearTimeout(timeout);
+              cameraReady = true;
+              console.log("Camera video ready");
+              resolve();
+            };
+            cameraVideo.onerror = () => {
+              clearTimeout(timeout);
+              console.log("Camera error, continuing without");
+              resolve();
+            };
+            cameraVideo.play().catch(() => {
+              clearTimeout(timeout);
+              resolve();
+            });
+          });
+        } catch (error) {
+          console.log("Camera setup failed:", error);
+        }
+      }
+
+      const drawFrame = () => {
+        if (this.isCompositeActive) {
+          try {
+            ctx.fillStyle = "transparent";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (screenVideo.readyState >= 2) {
+              ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+            }
+
+            if (cameraReady && cameraVideo.readyState >= 2) {
+              const pipWidth = 160;
+              const pipHeight = 120;
+              const pipX = canvas.width - pipWidth - 15;
+              const pipY = 15;
+
+              ctx.fillRect(pipX - 3, pipY - 3, pipWidth + 6, pipHeight + 6);
+
+              ctx.lineWidth = 3;
+              ctx.strokeRect(pipX, pipY, pipWidth, pipHeight);
+
+              ctx.drawImage(cameraVideo, pipX, pipY, pipWidth, pipHeight);
+            }
+
+            requestAnimationFrame(drawFrame);
+          } catch (error) {
+            console.error("Draw frame error:", error);
+            if (this.isCompositeActive) {
+              requestAnimationFrame(drawFrame);
+            }
+          }
+        }
+      };
+
+      this.isCompositeActive = true;
+      drawFrame();
+
+      const compositeStream = canvas.captureStream(30);
+
+      const screenAudioTracks = screenStream.getAudioTracks();
+      screenAudioTracks.forEach((track) => {
+        compositeStream.addTrack(track);
+      });
+
+      this.compositeCanvas = canvas;
+      this.screenVideoElement = screenVideo;
+      this.cameraVideoElement = cameraVideo;
+
+      return compositeStream;
+    } catch (error) {
+      console.error("Error creating composite stream:", error);
+      this.isCompositeActive = false;
+      return null;
+    }
+  }
+
+  async startScreenShare() {
+    try {
+      if (
+        !this.activeCall ||
+        !this.activeCall.peerConn ||
+        this.activeCall.state !== "connected"
+      ) {
+        this.showAudioError("No active call to share screen");
+        return false;
+      }
+
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          cursor: "always",
+          displaySurface: "monitor",
+        },
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
+
+      screenStream.getVideoTracks()[0].addEventListener("ended", () => {
+        console.log("Screen share ended by user");
+        this.stopScreenShare();
+      });
+
+      const senders = this.activeCall.peerConn.getSenders();
+      let videoSender = senders.find(
+        (sender) => sender.track && sender.track.kind === "video",
+      );
+
+      const controls = document.getElementById("controls");
+      const isVoiceCall = controls && controls.dataset.callType === "voice";
+      const hasActiveVideo =
+        videoSender && videoSender.track && videoSender.track.enabled;
+
+      console.log(
+        "Call type:",
+        isVoiceCall ? "voice" : "video",
+        "Has active video:",
+        hasActiveVideo,
+      );
+
+      let finalStream;
+
+      if (hasActiveVideo) {
+        console.log("5a. Creating composite stream (video + screen)...");
+
+        let cameraStream = null;
+        try {
+          const localVideo = document.getElementById("local");
+          if (localVideo && localVideo.srcObject) {
+            cameraStream = localVideo.srcObject;
+          } else if (videoSender.track) {
+            cameraStream = new MediaStream([videoSender.track]);
+          }
+        } catch (error) {
+          console.log("Failed to get camera stream:", error);
+        }
+
+        if (cameraStream) {
+          finalStream = await this.createCompositeStream(
+            cameraStream,
+            screenStream,
+          );
+        }
+
+        if (!finalStream) {
+          console.log("Composite failed, using screen only");
+          finalStream = screenStream;
+        }
+      } else {
+        console.log("5b. No active video, setting up screen-only sharing...");
+
+        if (!videoSender) {
+          videoSender = senders.find((sender) => !sender.track);
+
+          if (!videoSender) {
+            console.log("Creating new video sender...");
+            const canvas = document.createElement("canvas");
+            canvas.width = 1;
+            canvas.height = 1;
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = "transparent";
+            ctx.fillRect(0, 0, 1, 1);
+
+            const tempStream = canvas.captureStream(1);
+            const tempTrack = tempStream.getVideoTracks()[0];
+
+            videoSender = this.activeCall.peerConn.addTrack(
+              tempTrack,
+              tempStream,
+            );
+            setTimeout(() => tempTrack.stop(), 100);
+          }
+        }
+
+        finalStream = screenStream;
+      }
+
+      if (!finalStream) {
+        throw new Error("Failed to create stream");
+      }
+
+      // Сохраняем состояние
+      this.originalVideoTrack = videoSender.track;
+      this.screenStream = screenStream;
+      this.hadActiveVideoBeforeScreenShare = hasActiveVideo;
+
+      const finalVideoTrack = finalStream.getVideoTracks()[0];
+      await videoSender.replaceTrack(finalVideoTrack);
+
+      const localVideo = document.getElementById("local");
+      if (localVideo) {
+        localVideo.srcObject = finalStream;
+      }
+
+      this.ensureVideoAreaVisible(isVoiceCall);
+
+      this.isScreenSharing = true;
+      this.updateScreenShareButton();
+
+      console.log("Screen share started successfully");
+      return true;
+    } catch (error) {
+      console.error("Error starting screen share:", error);
+
+      if (this.screenStream) {
+        this.screenStream.getTracks().forEach((track) => track.stop());
+        this.screenStream = null;
+      }
+
+      if (error.name === "NotAllowedError") {
+        this.showAudioError("Screen sharing permission denied");
+      } else {
+        this.showAudioError("Failed to start screen sharing");
+      }
+
+      return false;
+    }
+  }
+
+  ensureRemoteVideoReady() {
+    const remoteVideo = document.getElementById("remote");
+    const remoteScene = document.getElementById("remote-scene");
+
+    if (remoteScene) {
+      remoteScene.classList.remove("novid");
+      remoteScene.classList.remove("connecting");
+    }
+
+    if (remoteVideo) {
+      remoteVideo.style.display = "block";
+
+      if (!remoteVideo.srcObject) {
+        remoteVideo.poster =
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+      }
+    }
+  }
+
+  async ensureVideoSender() {
+    if (!this.activeCall?.peerConn) {
+      throw new Error("No peer connection");
+    }
+
+    const senders = this.activeCall.peerConn.getSenders();
+    let videoSender = senders.find((sender) => sender.track?.kind === "video");
+
+    if (!videoSender) {
+      console.log("Creating video sender...");
+
+      const canvas = document.createElement("canvas");
+      canvas.width = 640;
+      canvas.height = 480;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "transparent";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const blackStream = canvas.captureStream(1);
+      const blackTrack = blackStream.getVideoTracks()[0];
+
+      videoSender = this.activeCall.peerConn.addTrack(blackTrack, blackStream);
+
+      try {
+        const offer = await this.activeCall.peerConn.createOffer();
+        await this.activeCall.peerConn.setLocalDescription(offer);
+
+        console.log("Renegotiation offer created");
+      } catch (error) {
+        console.error("Renegotiation failed:", error);
+      }
+    }
+
+    return videoSender;
+  }
+
+  async stopScreenShare() {
+    try {
+      this.isCompositeActive = false;
+
+      if (this.screenStream) {
+        this.screenStream.getTracks().forEach((track) => track.stop());
+        this.screenStream = null;
+      }
+      if (
+        this.cameraStream &&
+        this.cameraStream !== document.getElementById("local")?.srcObject
+      ) {
+        this.cameraStream.getTracks().forEach((track) => track.stop());
+        this.cameraStream = null;
+      }
+
+      if (this.cameraVideoElement) {
+        this.cameraVideoElement.remove();
+        this.cameraVideoElement = null;
+      }
+      if (this.screenVideoElement) {
+        this.screenVideoElement.remove();
+        this.screenVideoElement = null;
+      }
+      if (this.compositeCanvas) {
+        this.compositeCanvas.remove();
+        this.compositeCanvas = null;
+      }
+
+      if (!this.activeCall?.peerConn) {
+        this.restoreInterfaceAfterScreenShare();
+        this.isScreenSharing = false;
+        this.updateScreenShareButton();
+        return true;
+      }
+
+      const senders = this.activeCall.peerConn.getSenders();
+      const videoSender = senders.find(
+        (sender) => sender.track && sender.track.kind === "video",
+      );
+
+      if (videoSender) {
+        const oldTrack = videoSender.track;
+
+        if (this.hadActiveVideoBeforeScreenShare) {
+          console.log("Restoring camera...");
+
+          if (
+            this.originalVideoTrack &&
+            this.originalVideoTrack.readyState === "live"
+          ) {
+            await videoSender.replaceTrack(this.originalVideoTrack);
+
+            const localVideo = document.getElementById("local");
+            if (localVideo) {
+              const originalStream = new MediaStream([this.originalVideoTrack]);
+              localVideo.srcObject = originalStream;
+            }
+          } else {
+            try {
+              const newCameraStream = await navigator.mediaDevices.getUserMedia(
+                {
+                  video: {
+                    facingMode: "user",
+                    width: { ideal: 640 },
+                    height: { ideal: 360 },
+                  },
+                  audio: false,
+                },
+              );
+
+              const newVideoTrack = newCameraStream.getVideoTracks()[0];
+              await videoSender.replaceTrack(newVideoTrack);
+
+              const localVideo = document.getElementById("local");
+              if (localVideo) {
+                localVideo.srcObject = newCameraStream;
+              }
+            } catch (error) {
+              console.log("Failed to restore camera:", error);
+              await videoSender.replaceTrack(null);
+            }
+          }
+        } else {
+          // Видео не было активно - отключаем трек
+          console.log("No video was active before, disabling video track...");
+          await videoSender.replaceTrack(null);
+
+          const localVideo = document.getElementById("local");
+          if (localVideo) {
+            localVideo.srcObject = null;
+          }
+        }
+
+        // Останавливаем старый трек от демонстрации
+        if (oldTrack && oldTrack !== this.originalVideoTrack) {
+          oldTrack.stop();
+        }
+      }
+
+      this.restoreInterfaceAfterScreenShare();
+
+      this.isScreenSharing = false;
+      this.originalVideoTrack = null;
+      this.hadActiveVideoBeforeScreenShare = false;
+      this.updateScreenShareButton();
+
+      console.log("Screen share stopped successfully");
+      return true;
+    } catch (error) {
+      console.error("Error stopping screen share:", error);
+
+      this.isScreenSharing = false;
+      this.isCompositeActive = false;
+      this.hadActiveVideoBeforeScreenShare = false;
+      this.updateScreenShareButton();
+      return false;
+    }
+  }
+
+  restoreInterfaceAfterScreenShare() {
+    const remoteScene = document.getElementById("remote-scene");
+    const localVideo = document.getElementById("local");
+    const controls = document.getElementById("controls");
+    const isVoiceCall = controls && controls.dataset.callType === "voice";
+
+    if (remoteScene) {
+      remoteScene.classList.remove("screen-sharing");
+
+      if (isVoiceCall && !this.hadActiveVideoBeforeScreenShare) {
+        remoteScene.classList.add("novid");
+      }
+    }
+
+    if (localVideo) {
+      localVideo.classList.remove("screen-share-temp");
+
+      if (isVoiceCall && !this.hadActiveVideoBeforeScreenShare) {
+        localVideo.classList.add("hidden");
+      }
+    }
+
+    console.log("Interface restored after screen sharing");
+  }
+
+  async startScreenOnlyShare() {
+    console.log("Starting screen-only share...");
+
+    try {
+      if (!this.activeCall) {
+        console.log("No active call");
+        this.showAudioError("No active call to share screen");
+        return false;
+      }
+
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          cursor: "always",
+          displaySurface: "monitor",
+        },
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
+
+      screenStream.getVideoTracks()[0].addEventListener("ended", () => {
+        console.log("Screen share ended by user");
+        this.stopScreenShare();
+      });
+
+      const senders = this.activeCall.peerConn.getSenders();
+      const videoSender = senders.find(
+        (sender) => sender.track && sender.track.kind === "video",
+      );
+
+      if (!videoSender) {
+        console.error("No video sender found");
+        this.showAudioError("No video track available for screen sharing");
+        screenStream.getTracks().forEach((track) => track.stop());
+        return false;
+      }
+
+      const screenVideoTrack = screenStream.getVideoTracks()[0];
+      this.originalVideoTrack = videoSender.track;
+      this.screenStream = screenStream;
+      await videoSender.replaceTrack(screenVideoTrack);
+
+      const localVideo = document.getElementById("local");
+      if (localVideo) {
+        localVideo.srcObject = screenStream;
+      }
+
+      this.isScreenSharing = true;
+      this.updateScreenShareButton();
+
+      return true;
+    } catch (error) {
+      console.error("Error starting screen-only share:", error);
+
+      if (error.name === "NotAllowedError") {
+        this.showAudioError("Screen sharing permission denied");
+      } else if (error.name === "NotSupportedError") {
+        this.showAudioError("Screen sharing not supported in this browser");
+      } else {
+        this.showAudioError("Failed to start screen sharing");
+      }
+
+      return false;
+    }
+  }
+
+  updateScreenShareButton() {
+    const screenShareButton = document.getElementById("bc-screen-share");
+    if (screenShareButton) {
+      if (this.isScreenSharing) {
+        screenShareButton.classList.add("active");
+        screenShareButton.innerHTML = '<i class="fas fa-desktop"></i>';
+        screenShareButton.title = "Stop Screen Share";
+      } else {
+        screenShareButton.classList.remove("active");
+        screenShareButton.innerHTML = '<i class="far fa-desktop"></i>';
+        screenShareButton.title = "Start Screen Share";
+      }
+    }
+  }
+
+  async toggleScreenShare(e) {
+    e.stopPropagation();
+
+    if (!this.activeCall || this.activeCall.state !== "connected") {
+      this.showAudioError("No active call for screen sharing");
+      return;
+    }
+
+    if (this.isScreenSharing) {
+      await this.stopScreenShare();
+      return;
+    }
+
+    await this.startScreenShare();
+  }
+
+  updateInterfaceForScreenShare(screenStream) {
+    const remoteScene = document.getElementById("remote-scene");
+    const localVideo = document.getElementById("local");
+    const remoteVideo = document.getElementById("remote");
+
+    if (remoteScene) {
+      remoteScene.classList.remove("novid");
+      remoteScene.classList.remove("connecting");
+    }
+
+    if (localVideo) {
+      localVideo.classList.remove("hidden");
+      localVideo.srcObject = screenStream;
+    }
+
+    if (remoteVideo) {
+      if (
+        !remoteVideo.srcObject ||
+        remoteVideo.srcObject.getVideoTracks().length === 0
+      ) {
+        remoteVideo.poster =
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+      }
+    }
+
+    console.log("Interface updated for screen sharing");
+  }
+
+  ensureVideoAreaVisible(isVoiceCall) {
+    const remoteScene = document.getElementById("remote-scene");
+    const localVideo = document.getElementById("local");
+
+    if (remoteScene) {
+      remoteScene.classList.remove("novid");
+      remoteScene.classList.remove("connecting");
+      remoteScene.classList.add("screen-sharing");
+    }
+
+    if (localVideo) {
+      localVideo.classList.remove("hidden");
+      if (isVoiceCall) {
+        localVideo.classList.add("screen-share-temp");
+      }
+    }
+
+    console.log("Video area visible for screen sharing");
+  }
+
+  updateInterfaceAfterScreenShare(newStream) {
+    const controls = document.getElementById("controls");
+    const isVoiceCall = controls && controls.dataset.callType === "voice";
+    const remoteScene = document.getElementById("remote-scene");
+    const localVideo = document.getElementById("local");
+
+    if (localVideo) {
+      if (newStream) {
+        localVideo.srcObject = newStream;
+        if (isVoiceCall) {
+          localVideo.classList.add("hidden");
+        } else {
+          localVideo.classList.remove("hidden");
+        }
+      } else {
+        localVideo.srcObject = null;
+        if (isVoiceCall) {
+          localVideo.classList.add("hidden");
+        }
+      }
+    }
+
+    if (remoteScene && isVoiceCall && !newStream) {
+      remoteScene.classList.add("novid");
+    }
+
+    console.log("Interface restored after screen sharing");
   }
 
   /**
