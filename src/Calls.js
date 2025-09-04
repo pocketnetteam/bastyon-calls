@@ -1249,7 +1249,7 @@ class BastyonCalls extends EventEmitter {
 			if (a == "wait_local_media") {
 			}
 
-			if (a === "connecting" || a === "invite_sent") {
+			if (a === "connecting" /*|| a === "invite_sent"*/) {
 				this.signal.pause();
 				this.showConnecting();
 			}
