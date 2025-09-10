@@ -19,7 +19,7 @@ class BastyonCalls extends EventEmitter {
     /*this.initCordovaPermisions()*/ /// TODO
     this.options = options;
     this.initAudioEventListeners();
-    this.initCallKitIntegration();
+    // this.initCallKitIntegration();
     console.log("ss", client, matrixcs);
     console.log("dd", matrixcs);
   }
@@ -214,22 +214,75 @@ class BastyonCalls extends EventEmitter {
   }
 
   initAudioEventListeners() {
-    if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
-      navigator.mediaDevices.addEventListener("devicechange", async () => {
+    if (!navigator.mediaDevices?.addEventListener) {
+      return;
+    }
+
+    navigator.mediaDevices.addEventListener("devicechange", async () => {
+      try {
         const devices = await this.getAudioDevices();
 
-        const headphones = devices.speakers.find(
-          (device) =>
-            device.label.toLowerCase().includes("headphone") ||
-            device.label.toLowerCase().includes("bluetooth") ||
-            device.label.toLowerCase().includes("airpod"),
-        );
-
-        if (headphones && this.activeCall) {
-          await this.setAudioOutput(headphones.deviceId);
+        if (window.isios && window.isios()) {
+          return;
         }
-      });
-    }
+
+        if (window.cordova?.plugins?.audioManagement && this.activeCall) {
+          try {
+            await window.cordova.plugins.audioManagement.configureAudioSession({
+              category: "playAndRecord",
+              mode: "voiceChat",
+              options: ["allowBluetooth", "allowBluetoothA2DP"],
+            });
+          } catch (error) {
+            console.error("Cordova audio config failed:", error);
+          }
+          return;
+        }
+
+        const bluetoothDevice = devices.speakers.find((device) => {
+          const label = device.label.toLowerCase();
+          return (
+            label.includes("bluetooth") ||
+            label.includes("airpod") ||
+            label.includes("airbuds") ||
+            label.includes("wh-") ||
+            label.includes("buds") ||
+            label.includes("headset") ||
+            label.includes("headphone")
+          );
+        });
+
+        const wiredHeadphone = devices.speakers.find((device) => {
+          const label = device.label.toLowerCase();
+          return (
+            label.includes("headphone") ||
+            label.includes("headset") ||
+            label.includes("wired") ||
+            label.includes("3.5mm")
+          );
+        });
+
+        const preferredDevice = bluetoothDevice || wiredHeadphone;
+
+        if (preferredDevice && this.activeCall) {
+          await this.setAudioOutput(preferredDevice.deviceId);
+
+          const micDevice = devices.microphones.find(
+            (mic) =>
+              mic.groupId === preferredDevice.groupId ||
+              mic.label
+                .toLowerCase()
+                .includes(preferredDevice.label.toLowerCase().split(" ")[0]),
+          );
+
+          if (micDevice) {
+            await this.setMicrophoneInput(micDevice.deviceId);
+          }
+        }
+      } catch (error) {
+        console.error("Error handling device change:", error);
+      }
+    });
   }
 
   templates = {
