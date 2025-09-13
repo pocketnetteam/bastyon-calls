@@ -2092,10 +2092,153 @@ class BastyonCalls extends EventEmitter {
     }
   }
 
+  async getElectronScreenStream() {
+    try {
+      console.log("Getting screen sources from Electron...");
+
+      const sources = await window.electron.ipcRenderer.invoke(
+        "get-desktop-sources",
+      );
+
+      if (!sources || sources.length === 0) {
+        throw new Error("No screen sources available");
+      }
+
+      let selectedSource;
+      if (sources.length > 1) {
+        selectedSource = await this.showElectronSourceSelector(sources);
+      } else {
+        selectedSource = sources[0];
+      }
+
+      if (!selectedSource) {
+        throw new Error("No screen source selected");
+      }
+
+      const screenStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          mandatory: {
+            chromeMediaSource: "desktop",
+            chromeMediaSourceId: selectedSource.id,
+          },
+        },
+        video: {
+          mandatory: {
+            chromeMediaSource: "desktop",
+            chromeMediaSourceId: selectedSource.id,
+            minWidth: 1280,
+            maxWidth: 1920,
+            minHeight: 720,
+            maxHeight: 1080,
+          },
+        },
+      });
+
+      return screenStream;
+    } catch (error) {
+      console.error("Error getting Electron screen stream:", error);
+      throw error;
+    }
+  }
+
+  async showElectronSourceSelector(sources) {
+    return new Promise((resolve) => {
+      const modal = document.createElement("div");
+      modal.className = "bc-electron-source-selector";
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 999999;
+      `;
+
+      const dialog = document.createElement("div");
+      dialog.style.cssText = `
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        max-width: 600px;
+        max-height: 400px;
+        overflow-y: auto;
+      `;
+
+      const title = document.createElement("h3");
+      title.textContent = "Select Screen or Window to Share";
+      title.style.cssText = "margin-top: 0; color: #333;";
+      dialog.appendChild(title);
+
+      const sourceList = document.createElement("div");
+      sourceList.style.cssText =
+        "display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;";
+
+      sources.forEach((source) => {
+        const sourceItem = document.createElement("div");
+        sourceItem.style.cssText = `
+          border: 2px solid #ddd;
+          border-radius: 8px;
+          padding: 10px;
+          cursor: pointer;
+          text-align: center;
+          transition: border-color 0.2s;
+        `;
+
+        sourceItem.onmouseover = () =>
+          (sourceItem.style.borderColor = "#007bff");
+        sourceItem.onmouseout = () => (sourceItem.style.borderColor = "#ddd");
+
+        if (source.thumbnail) {
+          const img = document.createElement("img");
+          img.src = source.thumbnail;
+          img.style.cssText =
+            "width: 100%; height: 80px; object-fit: cover; border-radius: 4px;";
+          sourceItem.appendChild(img);
+        }
+
+        const label = document.createElement("div");
+        label.textContent = source.name;
+        label.style.cssText = "margin-top: 5px; font-size: 12px; color: #333;";
+        sourceItem.appendChild(label);
+
+        sourceItem.addEventListener("click", () => {
+          modal.remove();
+          resolve(source);
+        });
+
+        sourceList.appendChild(sourceItem);
+      });
+
+      dialog.appendChild(sourceList);
+
+      const cancelBtn = document.createElement("button");
+      cancelBtn.textContent = "Cancel";
+      cancelBtn.style.cssText = `
+        margin-top: 15px;
+        padding: 8px 16px;
+        background: #6c757d;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      `;
+      cancelBtn.addEventListener("click", () => {
+        modal.remove();
+        resolve(null);
+      });
+      dialog.appendChild(cancelBtn);
+
+      modal.appendChild(dialog);
+      document.body.appendChild(modal);
+    });
+  }
+
   async createCompositeStream(cameraStream, screenStream) {
     try {
-      console.log("Creating composite stream...");
-
       if (!screenStream || !screenStream.getVideoTracks().length) {
         console.error("Invalid screen stream");
         return null;
@@ -2233,17 +2376,23 @@ class BastyonCalls extends EventEmitter {
         return false;
       }
 
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          cursor: "always",
-          displaySurface: "monitor",
-        },
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        },
-      });
+      let screenStream;
+
+      if (window.electron && window.electron.ipcRenderer) {
+        screenStream = await this.getElectronScreenStream();
+      } else {
+        screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            cursor: "always",
+            displaySurface: "monitor",
+          },
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
+        });
+      }
 
       screenStream.getVideoTracks()[0].addEventListener("ended", () => {
         console.log("Screen share ended by user");
