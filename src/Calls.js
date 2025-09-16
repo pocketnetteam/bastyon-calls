@@ -359,7 +359,7 @@ class BastyonCalls extends EventEmitter {
         </div>
         <div class="bc-controls" data-call-type="video" id="controls">
           <button disabled class="bc-btn bc-camera" id="bc-camera"><i class="fas fa-sync-alt"></i></button>
-          <button class="bc-btn bc-screen-share" id="bc-screen-share" title="Screen Share"><i class="fas fa-desktop"></i></button>
+          <button disabled class="bc-btn bc-screen-share" id="bc-screen-share" title="Screen Share"><i class="fas fa-desktop"></i></button>
           <button class="bc-btn bc-video-on call-update-control" disabled id="bc-video-on"><i class="fas fa-video"></i></button>
           <button class="bc-btn bc-video-off call-update-control" id="bc-video-off"><i class="fas fa-video-slash"></i></button>
           <div class="bc-control-group">
@@ -950,36 +950,36 @@ class BastyonCalls extends EventEmitter {
           navigator.mediaDevices
             .getUserMedia(constraints)
             .then((stream) => {
-              stream.getTracks().forEach(function (track) {
-                // console.log('track', track)
-                const sender = self.activeCall.peerConn
-                  .getSenders()
-                  .find((s) => {
-                    return s.track.kind == track.kind;
-                  });
-                // console.log('current stream ', sender)
-                if (sender.track.label === track.label) {
-                  // console.log('same streams on change')
-                  return;
-                }
-                if (track.muted) {
-                  // console.log('track is unable', track)
-                }
-                sender.replaceTrack(track);
-                sender.track.stop();
-                self.videoStreams.local.srcObject = stream;
+              const newVideoTrack = stream.getVideoTracks()[0];
+              const senders = self.activeCall.peerConn.getSenders();
+              const videoSender = senders.find((s) => {
+                return s.track && s.track.kind === "video";
               });
-              this.hide();
+
+              if (videoSender) {
+                const oldTrack = videoSender.track;
+
+                videoSender.replaceTrack(newVideoTrack);
+
+                const localVideo = document.getElementById("local");
+                if (localVideo) {
+                  localVideo.srcObject = stream;
+                }
+
+                if (oldTrack) {
+                  oldTrack.stop();
+                }
+              }
             })
             .catch(function (error) {
-              // console.log("Const stream: " + error.message);
+              console.error("Error switching camera:", error);
             });
         })
         .catch(function (error) {
-          // console.log( "Check: " + error.message);
+          console.error("Error getting camera devices:", error);
         });
     } catch (e) {
-      // console.log('sa',e)
+      console.error("Error in camera method:", e);
     }
   }
 
@@ -1407,6 +1407,7 @@ class BastyonCalls extends EventEmitter {
     e.stopPropagation();
 
     this.activeCall.hangup("ended", false);
+    this.stopAllMediaTracks();
     this.renderTemplates.clearVideo();
 
     this.signal.pause();
@@ -1849,6 +1850,7 @@ class BastyonCalls extends EventEmitter {
       if (this.isScreenSharing) {
         this.stopScreenShare();
       }
+      this.stopAllMediaTracks();
       clearInterval(this.syncInterval);
       this.syncInterval = null;
       console.log("Call ended", call.callId);
@@ -1989,6 +1991,11 @@ class BastyonCalls extends EventEmitter {
 
   showRemoteVideo() {
     this.setRemoteElement();
+
+    const screenShareButton = document.getElementById("bc-screen-share");
+    if (screenShareButton) {
+      screenShareButton.disabled = false;
+    }
   }
 
   showConnecting() {
@@ -2145,64 +2152,26 @@ class BastyonCalls extends EventEmitter {
     return new Promise((resolve) => {
       const modal = document.createElement("div");
       modal.className = "bc-electron-source-selector";
-      modal.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.8);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 999999;
-      `;
 
       const dialog = document.createElement("div");
-      dialog.style.cssText = `
-        background: white;
-        padding: 20px;
-        border-radius: 10px;
-        max-width: 600px;
-        max-height: 400px;
-        overflow-y: auto;
-      `;
 
       const title = document.createElement("h3");
       title.textContent = "Select Screen or Window to Share";
-      title.style.cssText = "margin-top: 0; color: #333;";
       dialog.appendChild(title);
 
       const sourceList = document.createElement("div");
-      sourceList.style.cssText =
-        "display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;";
 
       sources.forEach((source) => {
         const sourceItem = document.createElement("div");
-        sourceItem.style.cssText = `
-          border: 2px solid #ddd;
-          border-radius: 8px;
-          padding: 10px;
-          cursor: pointer;
-          text-align: center;
-          transition: border-color 0.2s;
-        `;
-
-        sourceItem.onmouseover = () =>
-          (sourceItem.style.borderColor = "#007bff");
-        sourceItem.onmouseout = () => (sourceItem.style.borderColor = "#ddd");
 
         if (source.thumbnail) {
           const img = document.createElement("img");
           img.src = source.thumbnail;
-          img.style.cssText =
-            "width: 100%; height: 80px; object-fit: cover; border-radius: 4px;";
           sourceItem.appendChild(img);
         }
 
         const label = document.createElement("div");
         label.textContent = source.name;
-        label.style.cssText = "margin-top: 5px; font-size: 12px; color: #333;";
         sourceItem.appendChild(label);
 
         sourceItem.addEventListener("click", () => {
@@ -2217,15 +2186,6 @@ class BastyonCalls extends EventEmitter {
 
       const cancelBtn = document.createElement("button");
       cancelBtn.textContent = "Cancel";
-      cancelBtn.style.cssText = `
-        margin-top: 15px;
-        padding: 8px 16px;
-        background: #6c757d;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-      `;
       cancelBtn.addEventListener("click", () => {
         modal.remove();
         resolve(null);
@@ -2477,7 +2437,6 @@ class BastyonCalls extends EventEmitter {
         throw new Error("Failed to create stream");
       }
 
-      // Сохраняем состояние
       this.originalVideoTrack = videoSender.track;
       this.screenStream = screenStream;
       this.hadActiveVideoBeforeScreenShare = hasActiveVideo;
@@ -2654,7 +2613,6 @@ class BastyonCalls extends EventEmitter {
             }
           }
         } else {
-          // Видео не было активно - отключаем трек
           console.log("No video was active before, disabling video track...");
           await videoSender.replaceTrack(null);
 
@@ -2664,7 +2622,6 @@ class BastyonCalls extends EventEmitter {
           }
         }
 
-        // Останавливаем старый трек от демонстрации
         if (oldTrack && oldTrack !== this.originalVideoTrack) {
           oldTrack.stop();
         }
@@ -2971,6 +2928,37 @@ class BastyonCalls extends EventEmitter {
         })();
       }
     });
+  }
+
+  stopAllMediaTracks() {
+    try {
+      if (this.activeCall?.peerConn) {
+        const senders = this.activeCall.peerConn.getSenders();
+        senders.forEach((sender) => {
+          if (sender.track) {
+            sender.track.stop();
+          }
+        });
+      }
+
+      const localVideo = document.getElementById("local");
+      if (localVideo && localVideo.srcObject) {
+        localVideo.srcObject.getTracks().forEach((track) => track.stop());
+        localVideo.srcObject = null;
+      }
+
+      if (this.cameraStream) {
+        this.cameraStream.getTracks().forEach((track) => track.stop());
+        this.cameraStream = null;
+      }
+
+      if (this.screenStream) {
+        this.screenStream.getTracks().forEach((track) => track.stop());
+        this.screenStream = null;
+      }
+    } catch (error) {
+      console.error("Error stopping media tracks:", error);
+    }
   }
 }
 
