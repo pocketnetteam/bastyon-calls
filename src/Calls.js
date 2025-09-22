@@ -353,8 +353,12 @@ class BastyonCalls extends EventEmitter {
             </div>
             <div class="status">${this.options.getWithLocale("connecting")}</div>
           </div>
-          <div class="bc-video minified">
+          <div class="bc-video minified" id="local-video">
             <video id="local" muted pip="false" disablePictureInPicture="true" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
+            <div class="resize-handle nw"></div>
+            <div class="resize-handle ne"></div>
+            <div class="resize-handle sw"></div>
+            <div class="resize-handle se"></div>
           </div>
         </div>
         <div class="bc-controls" data-call-type="video" id="controls">
@@ -399,8 +403,12 @@ class BastyonCalls extends EventEmitter {
           </div>
           <div class="status">${this.options.getWithLocale("connecting")}</div>
         </div>
-        <div class="bc-video minified">
+        <div class="bc-video minified" id="local-video-voice">
           <video id="local" class="hidden" muted pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
+          <div class="resize-handle nw"></div>
+          <div class="resize-handle ne"></div>
+          <div class="resize-handle sw"></div>
+          <div class="resize-handle se"></div>
         </div>
       </div>
       <div data-call-type="voice" class="bc-controls voice" id="controls">
@@ -793,6 +801,13 @@ class BastyonCalls extends EventEmitter {
       if (this.isScreenSharing && this.screenStream) {
         this.updateInterfaceForScreenShare(this.screenStream);
       }
+
+      setTimeout(() => {
+        const minifiedVideos = document.querySelectorAll(".bc-video.minified");
+        minifiedVideos.forEach((element) => {
+          this.updateVideoBorder(element);
+        });
+      }, 100);
     });
   };
   hide(e) {
@@ -1153,6 +1168,8 @@ class BastyonCalls extends EventEmitter {
 
       event.preventDefault();
       if (event.target.classList.contains("bc-btn")) return;
+
+      if (event.target.closest(".bc-video.minified")) return;
       let shiftLeft = event.clientX - this.root.getBoundingClientRect().left;
       let shiftTop = event.clientY - this.root.getBoundingClientRect().top;
       this.root.style.cursor = "grabbing";
@@ -1540,6 +1557,478 @@ class BastyonCalls extends EventEmitter {
     document
       .getElementById("bc-format")
       ?.addEventListener("click", (e) => this.format.call(this, e));
+
+    this.initResizeHandlers();
+  }
+
+  initResizeHandlers() {
+    setTimeout(() => {
+      const minifiedVideos = document.querySelectorAll(".bc-video.minified");
+      minifiedVideos.forEach((videoElement) => {
+        this.makeVideoResizable(videoElement);
+      });
+    }, 100);
+  }
+
+  makeVideoResizable(element) {
+    const resizeHandles = element.querySelectorAll(".resize-handle");
+    if (!resizeHandles.length) return;
+
+    let isResizing = false;
+    let isDragging = false;
+    const aspectRatio = 4 / 3;
+
+    const getContainerBounds = () => {
+      const containers = [
+        document.querySelector("#bc-container"),
+        document.querySelector("#bc-root"),
+        this.container,
+        this.root,
+      ].filter(Boolean);
+
+      for (const container of containers) {
+        if (container) {
+          const rect = container.getBoundingClientRect();
+
+          if (rect.width > 0 && rect.height > 0) {
+            const padding = 15;
+            const bounds = {
+              left: rect.left + padding,
+              top: rect.top + padding,
+              right: rect.right - padding,
+              bottom: rect.bottom - padding,
+              width: rect.width - padding * 2,
+              height: rect.height - padding * 2,
+            };
+
+            return bounds;
+          }
+        }
+      }
+
+      const padding = 15;
+      const bounds = {
+        left: padding,
+        top: padding,
+        right: window.innerWidth - padding,
+        bottom: window.innerHeight - padding,
+        width: window.innerWidth - padding * 2,
+        height: window.innerHeight - padding * 2,
+      };
+
+      return bounds;
+    };
+
+    const adjustElementPosition = () => {
+      const bounds = getContainerBounds();
+      const rect = element.getBoundingClientRect();
+
+      let currentLeft = parseInt(element.style.left);
+      let currentTop = parseInt(element.style.top);
+
+      if (isNaN(currentLeft) || isNaN(currentTop)) {
+        currentLeft = rect.left;
+        currentTop = rect.top;
+      }
+
+      let newLeft = currentLeft;
+      let newTop = currentTop;
+
+      const elementWidth = rect.width;
+      const elementHeight = rect.height;
+
+      if (currentLeft < bounds.left) {
+        newLeft = bounds.left;
+      }
+      if (currentTop < bounds.top) {
+        newTop = bounds.top;
+      }
+      if (currentLeft + elementWidth > bounds.right) {
+        newLeft = Math.max(bounds.left, bounds.right - elementWidth);
+      }
+      if (currentTop + elementHeight > bounds.bottom) {
+        newTop = Math.max(bounds.top, bounds.bottom - elementHeight);
+        console.log(
+          "Correcting bottom overflow: was",
+          currentTop,
+          "now",
+          newTop,
+        );
+      }
+
+      if (newLeft !== currentLeft || newTop !== currentTop) {
+        console.log("Applying new position:", { newLeft, newTop });
+        element.style.left = newLeft + "px";
+        element.style.top = newTop + "px";
+        element.style.right = "auto";
+        element.style.bottom = "auto";
+        element.style.position = "fixed";
+      }
+    };
+
+    resizeHandles.forEach((handle) => {
+      handle.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        isResizing = true;
+        element.classList.add("no-transition");
+
+        const startX = e.clientX;
+        const startY = e.clientY;
+
+        const rect = element.getBoundingClientRect();
+        const startWidth = rect.width;
+        const startHeight = rect.height;
+
+        let startLeft = parseInt(element.style.left);
+        let startTop = parseInt(element.style.top);
+
+        if (isNaN(startLeft) || isNaN(startTop)) {
+          startLeft = rect.left;
+          startTop = rect.top;
+          element.style.left = startLeft + "px";
+          element.style.top = startTop + "px";
+          element.style.right = "auto";
+          element.style.bottom = "auto";
+        }
+
+        const handleType = handle.classList.contains("nw")
+          ? "nw"
+          : handle.classList.contains("ne")
+            ? "ne"
+            : handle.classList.contains("sw")
+              ? "sw"
+              : "se";
+
+        const onMouseMove = (e) => {
+          if (!isResizing) return;
+
+          let deltaX = e.clientX - startX;
+          let deltaY = e.clientY - startY;
+          let newWidth, newHeight, newLeft, newTop;
+
+          let sizeChange = 0;
+          switch (handleType) {
+            case "se":
+              sizeChange = deltaX;
+              break;
+            case "sw":
+              sizeChange = -deltaX;
+              break;
+            case "ne":
+              sizeChange = deltaX;
+              break;
+            case "nw":
+              sizeChange = -deltaX;
+              break;
+          }
+
+          newWidth = startWidth + sizeChange;
+          newHeight = newWidth / aspectRatio;
+
+          newWidth = Math.max(120, Math.min(400, newWidth));
+          newHeight = newWidth / aspectRatio;
+
+          switch (handleType) {
+            case "se":
+              newLeft = startLeft;
+              newTop = startTop;
+              break;
+            case "sw":
+              newLeft = startLeft - (newWidth - startWidth);
+              newTop = startTop;
+              break;
+            case "ne":
+              newLeft = startLeft;
+              newTop = startTop - (newHeight - startHeight);
+              break;
+            case "nw":
+              newLeft = startLeft - (newWidth - startWidth);
+              newTop = startTop - (newHeight - startHeight);
+              break;
+          }
+
+          const bounds = getContainerBounds();
+
+          if (newLeft < bounds.left) {
+            newLeft = bounds.left;
+          }
+          if (newTop < bounds.top) {
+            newTop = bounds.top;
+          }
+          if (newLeft + newWidth > bounds.right) {
+            const maxWidth = bounds.right - newLeft;
+            newWidth = Math.min(newWidth, maxWidth);
+            newHeight = newWidth / aspectRatio;
+          }
+          if (newTop + newHeight > bounds.bottom) {
+            const maxHeight = bounds.bottom - newTop;
+            newHeight = Math.min(newHeight, maxHeight);
+            newWidth = newHeight * aspectRatio;
+          }
+
+          element.style.width = newWidth + "px";
+          element.style.height = newHeight + "px";
+          element.style.left = newLeft + "px";
+          element.style.top = newTop + "px";
+          element.style.right = "auto";
+          element.style.bottom = "auto";
+        };
+
+        const onMouseUp = () => {
+          isResizing = false;
+          element.classList.remove("no-transition");
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mouseup", onMouseUp);
+        };
+
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+      });
+    });
+
+    element.style.pointerEvents = "auto";
+
+    element.addEventListener("mousedown", (e) => {
+      if (
+        e.target.classList.contains("resize-handle") ||
+        e.target.classList.contains("bc-btn")
+      )
+        return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      isDragging = true;
+      element.classList.add("no-transition");
+
+      const startMouseX = e.clientX;
+      const startMouseY = e.clientY;
+
+      let startElementX = parseInt(element.style.left);
+      let startElementY = parseInt(element.style.top);
+
+      if (isNaN(startElementX) || isNaN(startElementY)) {
+        const rect = element.getBoundingClientRect();
+        startElementX = rect.left;
+        startElementY = rect.top;
+        element.style.left = startElementX + "px";
+        element.style.top = startElementY + "px";
+        element.style.right = "auto";
+        element.style.bottom = "auto";
+      }
+
+      element.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
+
+      const onMouseMove = (e) => {
+        if (!isDragging) return;
+        const deltaX = e.clientX - startMouseX;
+        const deltaY = e.clientY - startMouseY;
+
+        let newLeft = startElementX + deltaX;
+        let newTop = startElementY + deltaY;
+
+        const bounds = getContainerBounds();
+        const rect = element.getBoundingClientRect();
+
+        const maxLeft = bounds.right - rect.width;
+        const maxTop = bounds.bottom - rect.height;
+        const minLeft = bounds.left;
+        const minTop = bounds.top;
+
+        newLeft = Math.max(minLeft, Math.min(maxLeft, newLeft));
+        newTop = Math.max(minTop, Math.min(maxTop, newTop));
+
+        element.style.left = newLeft + "px";
+        element.style.top = newTop + "px";
+        element.style.right = "auto";
+        element.style.bottom = "auto";
+      };
+
+      const onMouseUp = () => {
+        isDragging = false;
+        element.classList.remove("no-transition");
+        element.style.cursor = "grab";
+        document.body.style.userSelect = "";
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+      };
+
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    });
+
+    element.style.opacity = "0";
+    element.style.pointerEvents = "none";
+
+    const initializeVideoPosition = () => {
+      setTimeout(() => {
+        const bounds = getContainerBounds();
+
+        let videoWidth, videoHeight, leftX, topY;
+
+        {
+          videoWidth = 160;
+          videoHeight = 120;
+          const padding = 20;
+
+          leftX = bounds.left + bounds.width - videoWidth - padding;
+          topY = bounds.top + bounds.height - videoHeight - padding;
+        }
+
+        element.style.position = "fixed";
+        element.style.left = leftX + "px";
+        element.style.top = topY + "px";
+        element.style.width = videoWidth + "px";
+        element.style.height = videoHeight + "px";
+        element.style.right = "auto";
+        element.style.bottom = "auto";
+
+        element.style.opacity = "1";
+        element.style.pointerEvents = "auto";
+
+        videoInitialized = true;
+      }, 600);
+    };
+
+    initializeVideoPosition();
+
+    const transitionEndHandler = (e) => {
+      if (
+        e.propertyName === "width" ||
+        e.propertyName === "height" ||
+        e.propertyName === "transform"
+      ) {
+        if (videoInitialized) {
+          element.style.opacity = "0";
+        }
+
+        setTimeout(() => {
+          const bounds = getContainerBounds();
+          const rect = element.getBoundingClientRect();
+
+          const needsAdjustment =
+            rect.left < bounds.left ||
+            rect.top < bounds.top ||
+            rect.right > bounds.right ||
+            rect.bottom > bounds.bottom;
+
+          if (needsAdjustment) {
+            adjustElementPosition();
+          }
+
+          if (videoInitialized) {
+            setTimeout(() => {
+              element.style.opacity = "1";
+            }, 30);
+          }
+        }, 50);
+      }
+    };
+
+    element.addEventListener("transitionend", transitionEndHandler);
+
+    let videoInitialized = false;
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (videoInitialized) {
+        element.style.opacity = "0";
+      }
+
+      setTimeout(() => {
+        const bounds = getContainerBounds();
+        const rect = element.getBoundingClientRect();
+
+        const needsAdjustment =
+          rect.left < bounds.left ||
+          rect.top < bounds.top ||
+          rect.right > bounds.right ||
+          rect.bottom > bounds.bottom;
+
+        if (needsAdjustment) {
+          adjustElementPosition();
+        }
+
+        if (videoInitialized) {
+          setTimeout(() => {
+            element.style.opacity = "1";
+          }, 50);
+        }
+      }, 400);
+    });
+
+    const containers = [
+      document.querySelector("#bc-container"),
+      document.querySelector("#bc-root"),
+      this.container,
+      this.root,
+    ].filter(Boolean);
+
+    containers.forEach((container) => {
+      if (container) {
+        resizeObserver.observe(container);
+      }
+    });
+
+    const windowResizeHandler = () => {
+      if (videoInitialized) {
+        element.style.opacity = "0";
+      }
+
+      setTimeout(() => {
+        const bounds = getContainerBounds();
+        const rect = element.getBoundingClientRect();
+
+        const needsAdjustment =
+          rect.left < bounds.left ||
+          rect.top < bounds.top ||
+          rect.right > bounds.right ||
+          rect.bottom > bounds.bottom;
+
+        if (needsAdjustment) {
+          console.log("Window resized, element outside bounds, adjusting...");
+          adjustElementPosition();
+        }
+
+        if (videoInitialized) {
+          setTimeout(() => {
+            element.style.opacity = "1";
+          }, 50);
+        }
+      }, 400);
+    };
+
+    window.addEventListener("resize", windowResizeHandler);
+
+    element._resizeObserver = resizeObserver;
+    element._windowResizeHandler = windowResizeHandler;
+
+    element._cleanupResizeHandlers = () => {
+      if (element._resizeObserver) {
+        element._resizeObserver.disconnect();
+        element._resizeObserver = null;
+      }
+      if (element._windowResizeHandler) {
+        window.removeEventListener("resize", element._windowResizeHandler);
+        element._windowResizeHandler = null;
+      }
+      if (transitionEndHandler) {
+        element.removeEventListener("transitionend", transitionEndHandler);
+      }
+    };
+
+    this.updateVideoBorder(element);
+  }
+
+  updateVideoBorder(element) {
+    const video = element.querySelector("video");
+    if (video && !video.classList.contains("hidden")) {
+      element.classList.add("video-on");
+    } else {
+      element.classList.remove("video-on");
+    }
   }
 
   async showAudioDevices(e) {
