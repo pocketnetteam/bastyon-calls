@@ -336,6 +336,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 				font-size: 1.4em
 				color: rgba(var(--background-hidden-layer, .1))
 				img
+					object-fit: cover
 					height: 100%
 					width: 100%
 		.buttons
@@ -399,6 +400,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 			font-size: 1.6em
 			color: rgba(var(--background-hidden-layer, .1))
 			img
+				object-fit: cover
 				width: 100%
 				height: 100%
 
@@ -462,6 +464,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 			margin: 0 auto
 			height: 100vh
 			max-height: 100vh
+			position: relative
 
 			.avatar
 				border: 2px solid rgba(var(--background-hidden-layer, .1))
@@ -476,6 +479,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 				font-size: 1.6em
 				color: rgba(var(--background-hidden-layer, .1))
 				img
+					object-fit: cover
 					width: 100%
 					height: 100%
 			.status
@@ -507,22 +511,71 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 
 		&.minified
 			margin: 0
-			border-radius: 20px
+			border-radius: 12px
 			z-index: 33333333
 			position: fixed
 			right: 20px
-			bottom: 10%
+			bottom: 20px
 			overflow: hidden
+			width: 160px
+			height: 120px
+			cursor: grab
+
+			&.video-on
+				border: 2px solid rgba(255, 255, 255, 0.4)
+				box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4)
+
+			&:active
+				cursor: grabbing
+
+			&.no-transition
+				transition: none !important
+				animation: none !important
 
 			video
 				transform: scale(-1, 1)
-				height: 15vh
-				width: auto
-				max-height: 150px
+				width: 100%
+				height: 100%
+				object-fit: cover
+				pointer-events: none
+
+			.resize-handle
+				position: absolute
+				width: 12px
+				height: 12px
+				background: rgba(255, 255, 255, 0.9)
+				border: 1px solid rgba(0, 0, 0, 0.2)
+				border-radius: 2px
+				opacity: 0
+				transition: opacity 0.2s
+				z-index: 10
+
+				&.nw
+					top: -6px
+					left: -6px
+					cursor: nw-resize
+
+				&.ne
+					top: -6px
+					right: -6px
+					cursor: ne-resize
+
+				&.sw
+					bottom: -6px
+					left: -6px
+					cursor: sw-resize
+
+				&.se
+					bottom: -6px
+					right: -6px
+					cursor: se-resize
+
+			&:hover .resize-handle
+				opacity: 1
+
 			@media screen and (orientation : portrait)
-				video
-					height: 15vh
-					width: auto
+				width: 140px
+				height: 105px
 
 		@media screen and (max-width: 768px)
 			&.minified
@@ -635,6 +688,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 			color: rgba(var(--background-hidden-layer, .1))
 			background: rgb(var(--neutral-grad-0))
 			img
+				object-fit: cover
 				height: 100%
 		.info
 			margin-left: 10px
@@ -826,6 +880,7 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 	display: flex
 	justify-content: center
 	position: fixed
+	align-items: center
 	background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.99466) 99.44%)
 	bottom: 0
 	width: 100%
@@ -1037,3 +1092,134 @@ $font: 'Segoe UI Variable', 'Segoe UI', SegoeUI, 'Helvetica Neue', Helvetica, Ar
 
 			i
 				color: rgb(var(--text-color))
+
+.bc-electron-source-selector
+	position: fixed
+	top: 0
+	left: 0
+	width: 100%
+	height: 100%
+	background: rgba(0, 0, 0, 0.8)
+	display: flex
+	justify-content: center
+	align-items: center
+	z-index: 999999
+	animation: fadeIn 0.3s ease-out
+
+	& > div
+		background: rgb(var(--background-secondary-theme))
+		padding: 24px
+		border-radius: 16px
+		max-width: 80vw
+		max-height: 80vh
+		overflow-y: auto
+		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6)
+		color: rgb(var(--text-color))
+		animation: fadeIn 0.4s ease-out
+		border: 1px solid rgba(var(--neutral-grad-2), 0.3)
+
+		h3
+			margin-top: 0
+			margin-bottom: 20px
+			color: rgb(var(--text-color))
+			font-size: 18px
+			font-weight: 600
+			text-align: center
+
+		& > div
+			display: grid
+			grid-template-columns: repeat(auto-fill, minmax(180px, 1fr))
+			gap: 16px
+			margin-bottom: 20px
+			max-height: 50vh
+			overflow-y: auto
+
+			& > div
+				border: 2px solid rgba(var(--neutral-grad-2), 0.3)
+				border-radius: 12px
+				padding: 12px
+				cursor: pointer
+				text-align: center
+				transition: all 0.2s ease
+				background: rgba(var(--background-hidden-layer), 0.05)
+
+				&:hover
+					border-color: rgb(var(--color-bg-ac))
+					background: rgba(var(--color-bg-ac), 0.1)
+					transform: translateY(-2px)
+					box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3)
+
+				img
+					width: 100%
+					height: 100px
+					object-fit: cover
+					border-radius: 8px
+					background: rgba(var(--neutral-grad-1), 0.3)
+
+				& > div
+					margin-top: 8px
+					font-size: 13px
+					color: rgb(var(--text-color))
+					font-weight: 500
+					overflow: hidden
+					text-overflow: ellipsis
+					white-space: nowrap
+
+		button
+			margin-top: 16px
+			padding: 12px 24px
+			background: rgba(var(--neutral-grad-2), 0.6)
+			color: rgb(var(--text-color))
+			border: 1px solid rgba(var(--neutral-grad-2), 0.3)
+			border-radius: 8px
+			cursor: pointer
+			font-size: 14px
+			transition: all 0.2s ease
+			display: block
+			margin-left: auto
+			margin-right: auto
+
+			&:hover
+				background: rgba(var(--neutral-grad-2), 0.8)
+				transform: translateY(-1px)
+
+	@media screen and (max-width: 768px)
+		& > div
+			padding: 20px
+			max-width: 95vw
+			max-height: 90vh
+
+			h3
+				font-size: 16px
+				margin-bottom: 16px
+
+			& > div
+				grid-template-columns: repeat(auto-fill, minmax(150px, 1fr))
+				gap: 12px
+
+				& > div
+					padding: 10px
+
+					img
+						height: 80px
+
+					& > div
+						font-size: 12px
+						margin-top: 6px
+
+	@media screen and (max-width: 480px)
+		& > div
+			padding: 16px
+
+			& > div
+				grid-template-columns: repeat(auto-fill, minmax(120px, 1fr))
+				gap: 10px
+
+				& > div
+					padding: 8px
+
+					img
+						height: 60px
+
+					& > div
+						font-size: 11px
