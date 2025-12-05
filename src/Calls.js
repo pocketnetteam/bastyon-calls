@@ -19,7 +19,7 @@ class BastyonCalls extends EventEmitter {
     /*this.initCordovaPermisions()*/ /// TODO
     this.options = options;
     this.initAudioEventListeners();
-    // this.initCallKitIntegration();
+    this.initCallKitIntegration();
     console.log("ss", client, matrixcs);
     console.log("dd", matrixcs);
   }
@@ -46,6 +46,7 @@ class BastyonCalls extends EventEmitter {
   title = null;
   destroyed = false;
   view = "middle";
+  isTransitioning = false;
 
   setupCallKit() {
     if (window.cordova?.plugins?.CordovaCall) {
@@ -55,12 +56,12 @@ class BastyonCalls extends EventEmitter {
         window.cordova?.plugins?.CordovaCall.setAppName(
           "Bastyon",
           () => console.log("App name set"),
-          (err) => console.error("App name error:", err),
+          (err) => console.error("App name error:", err)
         );
         window.CordovaCall.setIncludeInRecents(
           true,
           () => console.log("Include in recents enabled"),
-          (err) => console.error("Include in recents error:", err),
+          (err) => console.error("Include in recents error:", err)
         );
 
         window.cordova.plugins.CordovaCall.on("answer", (data) => {
@@ -88,15 +89,49 @@ class BastyonCalls extends EventEmitter {
       console.log(
         "Available globals:",
         Object.keys(window).filter(
-          (k) => k.includes("Call") || k.includes("cordova"),
-        ),
+          (k) => k.includes("Call") || k.includes("cordova")
+        )
       );
     }
   }
 
+  detectPlatform() {
+    if (!window.cordova) return "web";
+
+    if (
+      window.cordova.platformId === "ios" ||
+      window.device?.platform === "iOS" ||
+      /iPad|iPhone|iPod/.test(navigator.userAgent)
+    ) {
+      return "ios";
+    }
+
+    if (
+      window.cordova.platformId === "android" ||
+      window.device?.platform === "Android" ||
+      /Android/.test(navigator.userAgent)
+    ) {
+      return "android";
+    }
+
+    return "web";
+  }
+
+  isAndroid() {
+    return this.detectPlatform() === "android";
+  }
+
+  isIOS() {
+    return this.detectPlatform() === "ios";
+  }
+
+  isWeb() {
+    return this.detectPlatform() === "web";
+  }
+
   async getAudioDevices() {
     try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
+      const devices = await this.devices(); // Use deduplicated version
       return {
         speakers: devices.filter((device) => device.kind === "audiooutput"),
         microphones: devices.filter((device) => device.kind === "audioinput"),
@@ -111,24 +146,46 @@ class BastyonCalls extends EventEmitter {
     try {
       if (!this.activeCall) return false;
 
+      const platform = this.detectPlatform();
+
+      // Android: Configure audio routing first
+      if (platform === "android") {
+        await this.configureAndroidAudioRouting(deviceId, "input");
+      }
+
+      // Build platform-specific constraints
       const constraints = {
-        audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+        audio: this.buildAudioConstraints(deviceId, platform),
         video: false,
       };
 
-      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+      // Get media with fallback chain
+      const newStream = await this.getUserMediaWithFallback(
+        constraints,
+        "audio"
+      );
       const newAudioTrack = newStream.getAudioTracks()[0];
 
+      // Replace track in peer connection
       const senders = this.activeCall.peerConn.getSenders();
       const audioSender = senders.find(
-        (sender) => sender.track && sender.track.kind === "audio",
+        (sender) => sender.track && sender.track.kind === "audio"
       );
 
       if (audioSender) {
+        const oldTrack = audioSender.track;
         await audioSender.replaceTrack(newAudioTrack);
 
-        if (audioSender.track) {
-          audioSender.track.stop();
+        if (oldTrack) {
+          oldTrack.stop();
+        }
+
+        // Validate new track
+        const isValid = await this.validateAudioTrack(newAudioTrack);
+        if (!isValid) {
+          console.error("Audio track validation failed");
+          this.showAudioError("Microphone selection failed");
+          return false;
         }
 
         localStorage.setItem("preferredMicrophoneInput", deviceId || "default");
@@ -167,22 +224,27 @@ class BastyonCalls extends EventEmitter {
     try {
       console.log("Trying to set audio output to:", deviceId);
 
+      const platform = this.detectPlatform();
+
+      if (platform === "android") {
+        await this.configureAndroidAudioRouting(deviceId, "output");
+      }
+
       const remoteVideo = document.getElementById("remote");
       const localVideo = document.getElementById("local");
 
       if (remoteVideo && typeof remoteVideo.setSinkId === "function") {
         try {
-          await remoteVideo.setSinkId(deviceId);
+          await remoteVideo.setSinkId(deviceId || "");
           console.log("Remote video sink set successfully");
         } catch (e) {
           console.error("Failed to set remote sink:", e);
-          throw e;
         }
       }
 
       if (localVideo && typeof localVideo.setSinkId === "function") {
         try {
-          await localVideo.setSinkId(deviceId);
+          await localVideo.setSinkId(deviceId || "");
           console.log("Local video sink set successfully");
         } catch (e) {
           console.warn("Failed to set local sink:", e);
@@ -193,7 +255,7 @@ class BastyonCalls extends EventEmitter {
       for (let audio of audioElements) {
         if (typeof audio.setSinkId === "function") {
           try {
-            await audio.setSinkId(deviceId);
+            await audio.setSinkId(deviceId || "");
           } catch (e) {
             console.warn("Failed to set audio sink:", e);
           }
@@ -203,7 +265,7 @@ class BastyonCalls extends EventEmitter {
       localStorage.setItem("preferredAudioOutput", deviceId || "default");
       console.log(
         "Audio output successfully changed to:",
-        deviceId || "default",
+        deviceId || "default"
       );
       return true;
     } catch (error) {
@@ -213,76 +275,78 @@ class BastyonCalls extends EventEmitter {
     }
   }
 
-  initAudioEventListeners() {
-    if (!navigator.mediaDevices?.addEventListener) {
-      return;
+  async validateCurrentDevices(devices) {
+    const currentInput = localStorage.getItem("preferredMicrophoneInput");
+    const currentOutput = localStorage.getItem("preferredAudioOutput");
+
+    // Check if input device still exists
+    if (currentInput && currentInput !== "default") {
+      const inputExists = devices.microphones.some(
+        (d) => d.deviceId === currentInput
+      );
+      if (!inputExists) {
+        console.warn("Current input device disconnected, switching to default");
+        await this.setMicrophoneInput("");
+      }
     }
 
-    navigator.mediaDevices.addEventListener("devicechange", async () => {
-      try {
+    if (currentOutput && currentOutput !== "default") {
+      const outputExists = devices.speakers.some(
+        (d) => d.deviceId === currentOutput
+      );
+      if (!outputExists) {
+        console.warn(
+          "Current output device disconnected, switching to default"
+        );
+        await this.setAudioOutput("");
+      }
+    }
+  }
+
+  async handlePriorityDeviceConnection(devices) {
+    if (!this.activeCall) return;
+
+    const platform = this.detectPlatform();
+
+    const bluetoothDevices = devices.speakers.filter(
+      (d) => this.categorizeDevice(d, platform) === "bluetooth"
+    );
+
+    if (bluetoothDevices.length > 0) {
+      const currentOutput = localStorage.getItem("preferredAudioOutput");
+      const currentIsBluetooth = devices.speakers.some(
+        (d) =>
+          d.deviceId === currentOutput &&
+          this.categorizeDevice(d, platform) === "bluetooth"
+      );
+
+      if (!currentIsBluetooth) {
+        console.log("Bluetooth device connected, auto-switching");
+        await this.setAudioOutput(bluetoothDevices[0].deviceId);
+      }
+    }
+  }
+
+  initAudioEventListeners() {
+    if (navigator.mediaDevices?.addEventListener) {
+      navigator.mediaDevices.addEventListener("devicechange", async () => {
+        console.log("Audio devices changed");
+
         const devices = await this.getAudioDevices();
 
-        if (window.isios && window.isios()) {
-          return;
+        if (this.activeCall) {
+          await this.validateCurrentDevices(devices);
         }
 
-        if (window.cordova?.plugins?.audioManagement && this.activeCall) {
-          try {
-            await window.cordova.plugins.audioManagement.configureAudioSession({
-              category: "playAndRecord",
-              mode: "voiceChat",
-              options: ["allowBluetooth", "allowBluetoothA2DP"],
-            });
-          } catch (error) {
-            console.error("Cordova audio config failed:", error);
-          }
-          return;
+        await this.handlePriorityDeviceConnection(devices);
+
+        const dropdown = document.querySelector(".bc-audio-dropdown");
+        if (dropdown) {
+          dropdown.style.opacity = "0";
+          setTimeout(() => dropdown.remove(), 200);
         }
-
-        const bluetoothDevice = devices.speakers.find((device) => {
-          const label = device.label.toLowerCase();
-          return (
-            label.includes("bluetooth") ||
-            label.includes("airpod") ||
-            label.includes("airbuds") ||
-            label.includes("wh-") ||
-            label.includes("buds") ||
-            label.includes("headset") ||
-            label.includes("headphone")
-          );
-        });
-
-        const wiredHeadphone = devices.speakers.find((device) => {
-          const label = device.label.toLowerCase();
-          return (
-            label.includes("headphone") ||
-            label.includes("headset") ||
-            label.includes("wired") ||
-            label.includes("3.5mm")
-          );
-        });
-
-        const preferredDevice = bluetoothDevice || wiredHeadphone;
-
-        if (preferredDevice && this.activeCall) {
-          await this.setAudioOutput(preferredDevice.deviceId);
-
-          const micDevice = devices.microphones.find(
-            (mic) =>
-              mic.groupId === preferredDevice.groupId ||
-              mic.label
-                .toLowerCase()
-                .includes(preferredDevice.label.toLowerCase().split(" ")[0]),
-          );
-
-          if (micDevice) {
-            await this.setMicrophoneInput(micDevice.deviceId);
-          }
-        }
-      } catch (error) {
-        console.error("Error handling device change:", error);
-      }
-    });
+      });
+    }
   }
 
   templates = {
@@ -300,7 +364,7 @@ class BastyonCalls extends EventEmitter {
 					<div class="title">
 						<div class="name">${call.initiator.source.name}</div>
 						<div class="description">${this.options.getWithLocale(
-              callTypeDescriptionKey,
+              callTypeDescriptionKey
             )}</div>
 					</div>
 				</div>
@@ -351,19 +415,17 @@ class BastyonCalls extends EventEmitter {
             <div class="avatar">
               ${this.getAvatar()}
             </div>
-            <div class="status">${this.options.getWithLocale("connecting")}</div>
+            <div class="status">${this.options.getWithLocale(
+              "connecting"
+            )}</div>
           </div>
-          <div class="bc-video minified" id="local-video">
+          <div class="bc-video minified">
             <video id="local" muted pip="false" disablePictureInPicture="true" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
-            <div class="resize-handle nw"></div>
-            <div class="resize-handle ne"></div>
-            <div class="resize-handle sw"></div>
-            <div class="resize-handle se"></div>
           </div>
         </div>
         <div class="bc-controls" data-call-type="video" id="controls">
           <button disabled class="bc-btn bc-camera" id="bc-camera"><i class="fas fa-sync-alt"></i></button>
-          <button disabled class="bc-btn bc-screen-share" id="bc-screen-share" title="Screen Share"><i class="fas fa-desktop"></i></button>
+          <button class="bc-btn bc-screen-share" id="bc-screen-share" title="Screen Share"><i class="fas fa-desktop"></i></button>
           <button class="bc-btn bc-video-on call-update-control" disabled id="bc-video-on"><i class="fas fa-video"></i></button>
           <button class="bc-btn bc-video-off call-update-control" id="bc-video-off"><i class="fas fa-video-slash"></i></button>
           <div class="bc-control-group">
@@ -403,12 +465,8 @@ class BastyonCalls extends EventEmitter {
           </div>
           <div class="status">${this.options.getWithLocale("connecting")}</div>
         </div>
-        <div class="bc-video minified" id="local-video-voice">
+        <div class="bc-video minified">
           <video id="local" class="hidden" muted pip="false" autoplay playsinline poster="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="></video>
-          <div class="resize-handle nw"></div>
-          <div class="resize-handle ne"></div>
-          <div class="resize-handle sw"></div>
-          <div class="resize-handle se"></div>
         </div>
       </div>
       <div data-call-type="voice" class="bc-controls voice" id="controls">
@@ -533,7 +591,7 @@ class BastyonCalls extends EventEmitter {
     // console.log(outerRoot)
     outerRoot.insertAdjacentHTML(
       "beforeend",
-      `<div class="bc-container" id="bc-container"><div id="bc-notify" class="bc-notify"></div><div id="bc-root"></div></div>`,
+      `<div class="bc-container" id="bc-container"><div id="bc-notify" class="bc-notify"></div><div id="bc-root"></div></div>`
     );
 
     this.root = document.getElementById("bc-root");
@@ -571,7 +629,7 @@ class BastyonCalls extends EventEmitter {
 
       let members = this.client.store.rooms[call.roomId].currentState.members;
       let initiatorId = Object.keys(members).filter(
-        (m) => m !== this.client.credentials.userId,
+        (m) => m !== this.client.credentials.userId
       );
       let initiator = members[initiatorId];
       let user = members[this.client.credentials.userId];
@@ -630,7 +688,7 @@ class BastyonCalls extends EventEmitter {
         let s = this.timer % 60;
         el.innerHTML = `${m}:${s >= 10 ? s : "0" + s}`;
       }.bind(this),
-      1000,
+      1000
     );
   }
 
@@ -801,13 +859,6 @@ class BastyonCalls extends EventEmitter {
       if (this.isScreenSharing && this.screenStream) {
         this.updateInterfaceForScreenShare(this.screenStream);
       }
-
-      setTimeout(() => {
-        const minifiedVideos = document.querySelectorAll(".bc-video.minified");
-        minifiedVideos.forEach((element) => {
-          this.updateVideoBorder(element);
-        });
-      }, 100);
     });
   };
   hide(e) {
@@ -846,47 +897,353 @@ class BastyonCalls extends EventEmitter {
     }
   }
 
-  devices() {
-    return navigator.mediaDevices.enumerateDevices().then((devices = []) => {
-      if (window.cordova && window.cordova.plugins.EnumerateDevicesPlugin) {
-        return cordova.plugins.EnumerateDevicesPlugin.getEnumerateDevices().then(
-          (cdevices = []) => {
-            var usedids = {};
-            var rdevices = [];
+  async devices() {
+    const platform = this.detectPlatform();
 
-            cdevices.reverse();
-            console.log("cdevices", cdevices);
-            console.log("devices", devices);
-            devices.forEach((device) => {
-              var clone = {
-                deviceId: device.deviceId,
-                groupId: device.groupId,
-                kind: device.kind,
-                label: device.label,
-              };
+    // Get browser devices
+    const browserDevices = await navigator.mediaDevices.enumerateDevices();
 
-              var match = cdevices.find((d, i) => {
-                return clone.kind == d.kind && !usedids[d.deviceId];
-              });
+    // Get Cordova devices if available
+    let cordovaDevices = [];
+    if (window.cordova?.plugins?.EnumerateDevicesPlugin) {
+      try {
+        cordovaDevices =
+          await cordova.plugins.EnumerateDevicesPlugin.getEnumerateDevices();
+      } catch (error) {
+        console.warn("Cordova device enumeration failed:", error);
+      }
+    }
 
-              if (match) {
-                usedids[match.deviceId] = true;
+    // Enrich labels from Cordova
+    const enrichedDevices = this.enrichDeviceLabels(
+      browserDevices,
+      cordovaDevices
+    );
 
-                if (!clone.label) {
-                  clone.label = (match.label || "").toLowerCase();
-                }
-              }
+    const deduplicated = this.deduplicateDevices(enrichedDevices, platform);
 
-              rdevices.push(clone);
-            });
-            console.log(rdevices);
-            return Promise.resolve(rdevices);
-          },
-        );
+    return this.sortDevices(deduplicated, platform);
+  }
+
+  cleanDeviceLabel(label) {
+    if (!label) return "Unknown Device";
+
+    let cleaned = label;
+
+    cleaned = cleaned.replace(/\s*[\(\[]\w+[\)\]]\s*$/g, "");
+    cleaned = cleaned.replace(/^(Communications?\s*-\s*)/i, "");
+    cleaned = cleaned.replace(/^(Default\s*-\s*)/i, "");
+    cleaned = cleaned.replace(/\.\.\.+$/, "");
+
+    if (cleaned.toLowerCase().includes("bluetooth")) {
+      if (/^bluetooth device\s*$/i.test(cleaned)) {
+        cleaned = "Bluetooth Device";
+      }
+    }
+
+    return cleaned.trim() || "Unknown Device";
+  }
+
+  categorizeDevice(device, platform) {
+    const label = (device.label || "").toLowerCase();
+
+    if (platform === "android") {
+      if (label.includes("speaker")) return "speaker";
+      if (label.includes("bluetooth")) return "bluetooth";
+      if (label.includes("headset") || label.includes("wired")) return "wired";
+      return "phone";
+    } else if (platform === "ios") {
+      if (label.includes("speaker")) return "speaker";
+      if (label.includes("bluetooth") || label.includes("airpod"))
+        return "bluetooth";
+      return "iphone";
+    } else {
+      if (label.includes("default")) return "default";
+      if (label.includes("bluetooth")) return "bluetooth";
+      if (label.includes("headphone") || label.includes("headset"))
+        return "headphone";
+      if (label.includes("speaker")) return "speaker";
+      return "microphone";
+    }
+  }
+
+  areSimilarLabels(label1, label2) {
+    const clean1 = this.cleanDeviceLabel(label1).toLowerCase();
+    const clean2 = this.cleanDeviceLabel(label2).toLowerCase();
+
+    // Exact match after cleaning
+    if (clean1 === clean2) return true;
+
+    // One contains the other
+    if (clean1.includes(clean2) || clean2.includes(clean1)) return true;
+
+    // Check for common patterns
+    const patterns = [
+      /^(.*?)\s*\(.*\)$/, // Remove parenthetical
+      /^(communications?[-\s])?(.*?)$/i, // Remove "Communications"
+      /^(default[-\s])?(.*?)$/i, // Remove "Default"
+    ];
+
+    let base1 = clean1,
+      base2 = clean2;
+    patterns.forEach((pattern) => {
+      const match1 = base1.match(pattern);
+      const match2 = base2.match(pattern);
+      if (match1) base1 = (match1[2] || match1[1] || "").trim();
+      if (match2) base2 = (match2[2] || match2[1] || "").trim();
+    });
+
+    return base1 === base2;
+  }
+
+  groupByPhysicalDevice(devices) {
+    const groups = [];
+    const used = new Set();
+
+    devices.forEach((device, index) => {
+      if (used.has(index)) return;
+
+      const group = [device];
+      used.add(index);
+
+      devices.forEach((other, otherIndex) => {
+        if (used.has(otherIndex) || index === otherIndex) return;
+        if (device.kind !== other.kind) return;
+
+        if (device.groupId && device.groupId === other.groupId) {
+          group.push(other);
+          used.add(otherIndex);
+          return;
+        }
+
+        if (this.areSimilarLabels(device.label, other.label)) {
+          group.push(other);
+          used.add(otherIndex);
+        }
+      });
+
+      groups.push(group);
+    });
+
+    return groups;
+  }
+
+  selectBestProfile(group, platform) {
+    if (group.length === 1) return group[0];
+
+    const scores = group.map((device) => {
+      const label = (device.label || "").toLowerCase();
+      let score = 0;
+
+      if (platform === "android") {
+        if (label.includes("default")) score += 10;
+        if (label.includes("communication")) score -= 5;
+        if (label.includes("hands-free")) score -= 10;
+        if (label.includes("earpiece")) score -= 20;
+      } else if (platform === "ios") {
+        if (!label.includes("communication")) score += 5;
+        if (label.includes("default")) score += 3;
+      } else {
+        if (!label.includes("communication")) score += 5;
+        if (label.includes("default")) score += 3;
       }
 
-      return Promise.resolve(devices);
+      if (label === "" || label === "default") score -= 2;
+
+      return { device, score };
     });
+
+    scores.sort((a, b) => b.score - a.score);
+
+    if (platform === "android") {
+      const filtered = scores.filter(
+        (s) => !(s.device.label || "").toLowerCase().includes("earpiece")
+      );
+      if (filtered.length > 0) {
+        return filtered[0].device;
+      }
+    }
+
+    return scores[0].device;
+  }
+
+  enrichDeviceLabels(browserDevices, cordovaDevices) {
+    const usedIds = {};
+
+    return browserDevices.map((device) => {
+      const clone = { ...device };
+
+      const match = cordovaDevices.find(
+        (d) => d.kind === device.kind && !usedIds[d.deviceId]
+      );
+
+      if (match) {
+        usedIds[match.deviceId] = true;
+        if (!clone.label || clone.label === "") {
+          clone.label = match.label || "";
+        }
+      }
+
+      return clone;
+    });
+  }
+
+  deduplicateDevices(devices, platform) {
+    const groups = this.groupByPhysicalDevice(devices);
+
+    return groups.map((group) => this.selectBestProfile(group, platform));
+  }
+
+  sortDevices(devices, platform) {
+    const priority = {
+      android: ["phone", "speaker", "wired", "bluetooth"],
+      ios: ["iphone", "speaker", "bluetooth"],
+      web: ["default", "headphone", "speaker", "bluetooth", "microphone"],
+    };
+
+    return devices.sort((a, b) => {
+      const categoryA = this.categorizeDevice(a, platform);
+      const categoryB = this.categorizeDevice(b, platform);
+
+      const prioList = priority[platform] || [];
+      const prioA = prioList.indexOf(categoryA);
+      const prioB = prioList.indexOf(categoryB);
+
+      if (prioA >= 0 && prioB >= 0) return prioA - prioB;
+
+      if (prioA >= 0) return -1;
+      if (prioB >= 0) return 1;
+
+      return a.label.localeCompare(b.label);
+    });
+  }
+
+  buildAudioConstraints(deviceId, platform) {
+    const baseConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    };
+
+    if (!deviceId) return baseConstraints;
+
+    if (platform === "android") {
+      return {
+        ...baseConstraints,
+        deviceId: { ideal: deviceId },
+      };
+    } else if (platform === "ios" || platform === "web") {
+      return {
+        ...baseConstraints,
+        deviceId: { exact: deviceId },
+      };
+    }
+
+    return baseConstraints;
+  }
+
+  async getUserMediaWithFallback(constraints, type) {
+    const attempts = [
+      constraints,
+      {
+        ...constraints,
+        [type]: {
+          ...constraints[type],
+          deviceId: constraints[type].deviceId?.exact
+            ? { ideal: constraints[type].deviceId.exact }
+            : constraints[type].deviceId,
+        },
+      },
+      {
+        ...constraints,
+        [type]: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      },
+      { [type]: true },
+    ];
+
+    for (let i = 0; i < attempts.length; i++) {
+      try {
+        console.log(`Media attempt ${i + 1}:`, attempts[i]);
+        return await navigator.mediaDevices.getUserMedia(attempts[i]);
+      } catch (error) {
+        console.warn(`Attempt ${i + 1} failed:`, error);
+        if (i === attempts.length - 1) throw error;
+      }
+    }
+  }
+
+  async validateAudioTrack(track, timeout = 1000) {
+    if (!track || track.readyState !== "live" || !track.enabled) {
+      return false;
+    }
+
+    return new Promise((resolve) => {
+      let resolved = false;
+
+      const cleanup = () => {
+        resolved = true;
+        track.removeEventListener("ended", onEnded);
+      };
+
+      const onEnded = () => {
+        if (!resolved) {
+          cleanup();
+          resolve(false);
+        }
+      };
+
+      track.addEventListener("ended", onEnded, { once: true });
+
+      setTimeout(() => {
+        if (!resolved) {
+          cleanup();
+          resolve(true);
+        }
+      }, timeout);
+    });
+  }
+
+  async configureAndroidAudioRouting(deviceId, type) {
+    if (!this.isAndroid()) return;
+    if (!window.plugins?.audioManagement) {
+      console.warn("Audio management plugin not available");
+      return;
+    }
+
+    try {
+      const devices = await this.getAudioDevices();
+      const device = [...devices.speakers, ...devices.microphones].find(
+        (d) => d.deviceId === deviceId
+      );
+
+      if (!device) return;
+
+      const category = this.categorizeDevice(device, "android");
+
+      await window.plugins.audioManagement.configureAudioSession({
+        category: "playAndRecord",
+        mode: "voiceChat",
+        options: ["allowBluetooth", "allowBluetoothA2DP"],
+      });
+
+      const modeMap = {
+        speaker: "speaker",
+        bluetooth: "bluetooth",
+        wired: "headset",
+        phone: "earpiece",
+      };
+
+      const mode = modeMap[category] || "earpiece";
+      await window.plugins.audioManagement.setAudioMode(mode);
+
+      console.log("Android audio routing:", category, "→", mode);
+    } catch (error) {
+      console.error("Android audio routing failed:", error);
+    }
   }
 
   camera(e) {
@@ -965,36 +1322,36 @@ class BastyonCalls extends EventEmitter {
           navigator.mediaDevices
             .getUserMedia(constraints)
             .then((stream) => {
-              const newVideoTrack = stream.getVideoTracks()[0];
-              const senders = self.activeCall.peerConn.getSenders();
-              const videoSender = senders.find((s) => {
-                return s.track && s.track.kind === "video";
+              stream.getTracks().forEach(function (track) {
+                // console.log('track', track)
+                const sender = self.activeCall.peerConn
+                  .getSenders()
+                  .find((s) => {
+                    return s.track.kind == track.kind;
+                  });
+                // console.log('current stream ', sender)
+                if (sender.track.label === track.label) {
+                  // console.log('same streams on change')
+                  return;
+                }
+                if (track.muted) {
+                  // console.log('track is unable', track)
+                }
+                sender.replaceTrack(track);
+                sender.track.stop();
+                self.videoStreams.local.srcObject = stream;
               });
-
-              if (videoSender) {
-                const oldTrack = videoSender.track;
-
-                videoSender.replaceTrack(newVideoTrack);
-
-                const localVideo = document.getElementById("local");
-                if (localVideo) {
-                  localVideo.srcObject = stream;
-                }
-
-                if (oldTrack) {
-                  oldTrack.stop();
-                }
-              }
+              this.hide();
             })
             .catch(function (error) {
-              console.error("Error switching camera:", error);
+              // console.log("Const stream: " + error.message);
             });
         })
         .catch(function (error) {
-          console.error("Error getting camera devices:", error);
+          // console.log( "Check: " + error.message);
         });
     } catch (e) {
-      console.error("Error in camera method:", e);
+      // console.log('sa',e)
     }
   }
 
@@ -1012,7 +1369,7 @@ class BastyonCalls extends EventEmitter {
 
       const senders = this.activeCall.peerConn.getSenders();
       const videoSender = senders.find(
-        (sender) => sender.track && sender.track.kind === "video",
+        (sender) => sender.track && sender.track.kind === "video"
       );
 
       if (videoSender) {
@@ -1040,29 +1397,73 @@ class BastyonCalls extends EventEmitter {
 
   format() {
     console.log("format", this.root);
-    if (this.root.classList.contains("middle")) {
+
+    if (this.isTransitioning) return;
+    this.isTransitioning = true;
+
+    const isMiddle = this.root.classList.contains("middle");
+    const isFull = this.root.classList.contains("full");
+
+    if (isMiddle) {
+      this.root.classList.add("full");
       this.root.classList.remove("middle");
-      this.toFull();
-    } else if (this.root.classList.contains("full")) {
+      localStorage.setItem("callSizeSettings", "full");
+      this.view = "full";
+    } else if (isFull) {
+      this.root.classList.add("middle");
       this.root.classList.remove("full");
-      this.toMiddle();
+      localStorage.setItem("callSizeSettings", "middle");
+      this.view = "middle";
     }
+
+    if (this?.options?.changeView) {
+      this.options.changeView(this.activeCall, this);
+    }
+
+    this.isTransitioning = false;
   }
   pip(e) {
+    e?.stopPropagation();
     console.log("E", e);
-    if (this.root.classList.contains("middle")) {
-      this.root.classList.remove("middle");
-      this.toMini();
-    } else if (this.root.classList.contains("full")) {
-      this.root.classList.remove("full");
-      this.toMini();
-    } else {
+
+    if (this.isTransitioning) return;
+    this.isTransitioning = true;
+
+    const isMiddle = this.root.classList.contains("middle");
+    const isFull = this.root.classList.contains("full");
+    const isMinified = this.root.classList.contains("minified");
+
+    if (isMiddle || isFull) {
+      this.root.classList.add("minified");
+      this.root.classList.remove("middle", "full");
+
+      localStorage.setItem("callSizeSettings", "mini");
+      this.view = "mini";
+      if (this?.options?.changeView) {
+        this.options.changeView(this.activeCall, this);
+      }
+
+      this.setupMiniDrag();
+    } else if (isMinified) {
+      this.root.classList.add("middle");
+      this.root.classList.remove("minified");
       this.cancelMini();
-      this.toMiddle();
+
+      localStorage.setItem("callSizeSettings", "middle");
+      this.view = "middle";
+      if (this?.options?.changeView) {
+        this.options.changeView(this.activeCall, this);
+      }
     }
+
+    this.isTransitioning = false;
   }
+
+  clearSizeClasses() {
+    this.root.classList.remove("minified", "middle", "full");
+  }
+
   toMiddle() {
-    debugger;
     this.root.classList.add("middle");
     localStorage.setItem("callSizeSettings", "middle");
 
@@ -1104,16 +1505,7 @@ class BastyonCalls extends EventEmitter {
     });
   }
 
-  toMini() {
-    this.root.classList.add("minified");
-    localStorage.setItem("callSizeSettings", "mini");
-
-    this.view = "mini";
-
-    if (this?.options?.changeView) {
-      this.options.changeView(this.activeCall, this);
-    }
-
+  setupMiniDrag() {
     /*if(typeof Hammer != 'undefined'){
 			console.log("HAMMER")
 			this.hammertime = new Hammer(this.root);
@@ -1168,8 +1560,6 @@ class BastyonCalls extends EventEmitter {
 
       event.preventDefault();
       if (event.target.classList.contains("bc-btn")) return;
-
-      if (event.target.closest(".bc-video.minified")) return;
       let shiftLeft = event.clientX - this.root.getBoundingClientRect().left;
       let shiftTop = event.clientY - this.root.getBoundingClientRect().top;
       this.root.style.cursor = "grabbing";
@@ -1188,7 +1578,7 @@ class BastyonCalls extends EventEmitter {
             ) {
               this.root.style.top = this.getPercents(
                 "height",
-                e.clientY - shiftTop,
+                e.clientY - shiftTop
               );
             }
           } else if (
@@ -1198,13 +1588,13 @@ class BastyonCalls extends EventEmitter {
           ) {
             this.root.style.top = this.getPercents(
               "height",
-              window.innerHeight - this.root.offsetHeight - 11,
+              window.innerHeight - this.root.offsetHeight - 11
             );
           } else {
             console.log(
               "y out",
               window.innerHeight - this.root.getBoundingClientRect().bottom,
-              e.clientY - shiftTop,
+              e.clientY - shiftTop
             );
           }
         } else {
@@ -1230,7 +1620,7 @@ class BastyonCalls extends EventEmitter {
             ) {
               this.root.style.left = this.getPercents(
                 "width",
-                e.pageX - shiftLeft,
+                e.pageX - shiftLeft
               );
             }
           } else if (
@@ -1242,14 +1632,14 @@ class BastyonCalls extends EventEmitter {
           ) {
             this.root.style.left = this.root.style.left = this.getPercents(
               "width",
-              document.body.clientWidth - this.root.offsetWidth - 71,
+              document.body.clientWidth - this.root.offsetWidth - 71
             );
           } else {
             console.log(
               "x out",
               document.body.clientWidth -
                 this.root.getBoundingClientRect().left -
-                this.root.offsetWidth,
+                this.root.offsetWidth
             );
           }
         } else {
@@ -1272,7 +1662,7 @@ class BastyonCalls extends EventEmitter {
           JSON.stringify({
             left: this.root.style.left,
             top: this.root.style.top,
-          }),
+          })
         );
         document.onmousemove = null;
         this.root.style.cursor = "grab";
@@ -1284,7 +1674,7 @@ class BastyonCalls extends EventEmitter {
           JSON.stringify({
             left: this.root.style.left,
             top: this.root.style.top,
-          }),
+          })
         );
         if (!event.target.classList.contains("bc-btn")) {
           event.preventDefault();
@@ -1314,16 +1704,16 @@ class BastyonCalls extends EventEmitter {
   }
 
   cancelMini() {
-    this.root.classList.remove("minified");
-
     if (this.hammertime) {
       this.hammertime.off("pan");
       this.hammertime.destroy();
     }
 
     document.onmousemove = null;
-    this.root.style = {};
     this.root.onmousedown = null;
+
+    this.root.style.cursor = "";
+    this.root.style.zIndex = "";
 
     if (this?.options?.onCancelMini) {
       this.options.onCancelMini(this.activeCall, this);
@@ -1353,7 +1743,7 @@ class BastyonCalls extends EventEmitter {
       let members = this.client.store.rooms[roomId].currentState.members;
 
       let initiatorId = Object.keys(members).filter(
-        (m) => m !== this.client.credentials.userId,
+        (m) => m !== this.client.credentials.userId
       );
 
       let initiator = members[initiatorId];
@@ -1424,7 +1814,6 @@ class BastyonCalls extends EventEmitter {
     e.stopPropagation();
 
     this.activeCall.hangup("ended", false);
-    this.stopAllMediaTracks();
     this.renderTemplates.clearVideo();
 
     this.signal.pause();
@@ -1436,7 +1825,7 @@ class BastyonCalls extends EventEmitter {
   }
   setLocalElement() {
     const st = this.activeCall.feeds.find(
-      (f) => f.userId === this.activeCall.user.userId,
+      (f) => f.userId === this.activeCall.user.userId
     )?.stream;
     try {
       st && document.getElementById("local")
@@ -1450,7 +1839,7 @@ class BastyonCalls extends EventEmitter {
   }
   setRemoteElement() {
     const st = this.activeCall.feeds.find(
-      (f) => f.userId !== this.activeCall.user.userId,
+      (f) => f.userId !== this.activeCall.user.userId
     )?.stream;
     try {
       if (st && document.getElementById("remote")) {
@@ -1500,18 +1889,26 @@ class BastyonCalls extends EventEmitter {
           let size = localStorage.getItem("callSizeSettings")?.toString();
           this.setLocalElement();
           console.log("init with " + size);
+
+          this.clearSizeClasses();
+
           switch (size) {
             case "mini":
-              this.toMini();
+              this.root.classList.add("minified");
+              this.view = "mini";
+              this.setupMiniDrag();
               break;
             case "middle":
-              this.toMiddle();
+              this.root.classList.add("middle");
+              this.view = "middle";
               break;
             case "full":
-              this.toFull();
+              this.root.classList.add("full");
+              this.view = "full";
               break;
             default:
-              this.toMiddle();
+              this.root.classList.add("middle");
+              this.view = "middle";
               break;
           }
 
@@ -1557,478 +1954,151 @@ class BastyonCalls extends EventEmitter {
     document
       .getElementById("bc-format")
       ?.addEventListener("click", (e) => this.format.call(this, e));
-
-    this.initResizeHandlers();
   }
 
-  initResizeHandlers() {
-    setTimeout(() => {
-      const minifiedVideos = document.querySelectorAll(".bc-video.minified");
-      minifiedVideos.forEach((videoElement) => {
-        this.makeVideoResizable(videoElement);
-      });
-    }, 100);
+  getDeviceIcon(device, platform) {
+    const category = this.categorizeDevice(device, platform);
+    const label = (device.label || "").toLowerCase();
+
+    // Type-specific icons
+    if (label.includes("bluetooth") || label.includes("airpod")) {
+      return "fab fa-bluetooth-b";
+    }
+    if (label.includes("headphone") || label.includes("headset")) {
+      return "fas fa-headphones";
+    }
+    if (label.includes("speaker")) {
+      return "fas fa-volume-up";
+    }
+    if (label.includes("microphone") || label.includes("mic")) {
+      return "fas fa-microphone";
+    }
+
+    // Category-based fallback
+    if (category === "bluetooth") return "fab fa-bluetooth-b";
+    if (category === "headphone" || category === "wired")
+      return "fas fa-headphones";
+    if (category === "speaker") return "fas fa-volume-up";
+
+    // Default icons
+    return device.kind === "audioinput"
+      ? "fas fa-microphone"
+      : "fas fa-volume-up";
   }
 
-  makeVideoResizable(element) {
-    const resizeHandles = element.querySelectorAll(".resize-handle");
-    if (!resizeHandles.length) return;
+  getFriendlyDeviceName(device, platform) {
+    if (device.deviceId === "default") {
+      return device.label;
+    }
 
-    let isResizing = false;
-    let isDragging = false;
-    const aspectRatio = 4 / 3;
+    const category = this.categorizeDevice(device, platform);
+    const cleanLabel = this.cleanDeviceLabel(device.label);
 
-    const getContainerBounds = () => {
-      const containers = [
-        document.querySelector("#bc-container"),
-        document.querySelector("#bc-root"),
-        this.container,
-        this.root,
-      ].filter(Boolean);
-
-      for (const container of containers) {
-        if (container) {
-          const rect = container.getBoundingClientRect();
-
-          if (rect.width > 0 && rect.height > 0) {
-            const padding = 15;
-            const bounds = {
-              left: rect.left + padding,
-              top: rect.top + padding,
-              right: rect.right - padding,
-              bottom: rect.bottom - padding,
-              width: rect.width - padding * 2,
-              height: rect.height - padding * 2,
-            };
-
-            return bounds;
-          }
-        }
-      }
-
-      const padding = 15;
-      const bounds = {
-        left: padding,
-        top: padding,
-        right: window.innerWidth - padding,
-        bottom: window.innerHeight - padding,
-        width: window.innerWidth - padding * 2,
-        height: window.innerHeight - padding * 2,
+    if (platform === "android") {
+      const nameMap = {
+        phone: "Phone",
+        speaker: "Speaker",
+        wired: "Wired Headset",
+        bluetooth: cleanLabel.includes("AirPods") ? cleanLabel : "Bluetooth",
       };
+      return nameMap[category] || cleanLabel;
+    } else if (platform === "ios") {
+      const nameMap = {
+        iphone: "iPhone",
+        speaker: "Speaker",
+        bluetooth: cleanLabel,
+      };
+      return nameMap[category] || cleanLabel;
+    }
 
-      return bounds;
-    };
+    return cleanLabel;
+  }
 
-    const adjustElementPosition = () => {
-      const bounds = getContainerBounds();
-      const rect = element.getBoundingClientRect();
+  createDeviceItem(device, isSelected, type, platform) {
+    const item = document.createElement("div");
+    item.className = `bc-audio-dropdown-item ${isSelected ? "selected" : ""}`;
 
-      let currentLeft = parseInt(element.style.left);
-      let currentTop = parseInt(element.style.top);
+    const icon = this.getDeviceIcon(device, platform);
 
-      if (isNaN(currentLeft) || isNaN(currentTop)) {
-        currentLeft = rect.left;
-        currentTop = rect.top;
-      }
+    const displayName = this.getFriendlyDeviceName(device, platform);
 
-      let newLeft = currentLeft;
-      let newTop = currentTop;
+    item.innerHTML = `
+      <i class="${icon}"></i>
+      <span title="${device.label}">${displayName}</span>
+    `;
 
-      const elementWidth = rect.width;
-      const elementHeight = rect.height;
+    item.addEventListener("click", async () => {
+      const success =
+        type === "speaker"
+          ? await this.setAudioOutput(
+              device.deviceId === "default" ? "" : device.deviceId
+            )
+          : await this.setMicrophoneInput(
+              device.deviceId === "default" ? "" : device.deviceId
+            );
 
-      if (currentLeft < bounds.left) {
-        newLeft = bounds.left;
-      }
-      if (currentTop < bounds.top) {
-        newTop = bounds.top;
-      }
-      if (currentLeft + elementWidth > bounds.right) {
-        newLeft = Math.max(bounds.left, bounds.right - elementWidth);
-      }
-      if (currentTop + elementHeight > bounds.bottom) {
-        newTop = Math.max(bounds.top, bounds.bottom - elementHeight);
-        console.log(
-          "Correcting bottom overflow: was",
-          currentTop,
-          "now",
-          newTop,
+      if (success) {
+        const dropdown = item.closest(".bc-audio-dropdown");
+        const section = item.parentElement;
+        const items = Array.from(
+          dropdown.querySelectorAll(".bc-audio-dropdown-item")
         );
-      }
 
-      if (newLeft !== currentLeft || newTop !== currentTop) {
-        console.log("Applying new position:", { newLeft, newTop });
-        element.style.left = newLeft + "px";
-        element.style.top = newTop + "px";
-        element.style.right = "auto";
-        element.style.bottom = "auto";
-        element.style.position = "fixed";
-      }
-    };
-
-    resizeHandles.forEach((handle) => {
-      handle.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        isResizing = true;
-        element.classList.add("no-transition");
-
-        const startX = e.clientX;
-        const startY = e.clientY;
-
-        const rect = element.getBoundingClientRect();
-        const startWidth = rect.width;
-        const startHeight = rect.height;
-
-        let startLeft = parseInt(element.style.left);
-        let startTop = parseInt(element.style.top);
-
-        if (isNaN(startLeft) || isNaN(startTop)) {
-          startLeft = rect.left;
-          startTop = rect.top;
-          element.style.left = startLeft + "px";
-          element.style.top = startTop + "px";
-          element.style.right = "auto";
-          element.style.bottom = "auto";
-        }
-
-        const handleType = handle.classList.contains("nw")
-          ? "nw"
-          : handle.classList.contains("ne")
-            ? "ne"
-            : handle.classList.contains("sw")
-              ? "sw"
-              : "se";
-
-        const onMouseMove = (e) => {
-          if (!isResizing) return;
-
-          let deltaX = e.clientX - startX;
-          let deltaY = e.clientY - startY;
-          let newWidth, newHeight, newLeft, newTop;
-
-          let sizeChange = 0;
-          switch (handleType) {
-            case "se":
-              sizeChange = deltaX;
-              break;
-            case "sw":
-              sizeChange = -deltaX;
-              break;
-            case "ne":
-              sizeChange = deltaX;
-              break;
-            case "nw":
-              sizeChange = -deltaX;
-              break;
+        let inSection = false;
+        items.forEach((el) => {
+          if (
+            el.previousElementSibling?.classList.contains(
+              "bc-audio-dropdown-header"
+            ) ||
+            el === item
+          ) {
+            inSection = true;
           }
-
-          newWidth = startWidth + sizeChange;
-          newHeight = newWidth / aspectRatio;
-
-          newWidth = Math.max(120, Math.min(400, newWidth));
-          newHeight = newWidth / aspectRatio;
-
-          switch (handleType) {
-            case "se":
-              newLeft = startLeft;
-              newTop = startTop;
-              break;
-            case "sw":
-              newLeft = startLeft - (newWidth - startWidth);
-              newTop = startTop;
-              break;
-            case "ne":
-              newLeft = startLeft;
-              newTop = startTop - (newHeight - startHeight);
-              break;
-            case "nw":
-              newLeft = startLeft - (newWidth - startWidth);
-              newTop = startTop - (newHeight - startHeight);
-              break;
+          if (
+            el.nextElementSibling?.classList.contains(
+              "bc-audio-dropdown-separator"
+            )
+          ) {
+            inSection = false;
           }
-
-          const bounds = getContainerBounds();
-
-          if (newLeft < bounds.left) {
-            newLeft = bounds.left;
+          if (inSection && el.classList.contains("bc-audio-dropdown-item")) {
+            el.classList.remove("selected");
           }
-          if (newTop < bounds.top) {
-            newTop = bounds.top;
-          }
-          if (newLeft + newWidth > bounds.right) {
-            const maxWidth = bounds.right - newLeft;
-            newWidth = Math.min(newWidth, maxWidth);
-            newHeight = newWidth / aspectRatio;
-          }
-          if (newTop + newHeight > bounds.bottom) {
-            const maxHeight = bounds.bottom - newTop;
-            newHeight = Math.min(newHeight, maxHeight);
-            newWidth = newHeight * aspectRatio;
-          }
+        });
 
-          element.style.width = newWidth + "px";
-          element.style.height = newHeight + "px";
-          element.style.left = newLeft + "px";
-          element.style.top = newTop + "px";
-          element.style.right = "auto";
-          element.style.bottom = "auto";
-        };
-
-        const onMouseUp = () => {
-          isResizing = false;
-          element.classList.remove("no-transition");
-          document.removeEventListener("mousemove", onMouseMove);
-          document.removeEventListener("mouseup", onMouseUp);
-        };
-
-        document.addEventListener("mousemove", onMouseMove);
-        document.addEventListener("mouseup", onMouseUp);
-      });
-    });
-
-    element.style.pointerEvents = "auto";
-
-    element.addEventListener("mousedown", (e) => {
-      if (
-        e.target.classList.contains("resize-handle") ||
-        e.target.classList.contains("bc-btn")
-      )
-        return;
-
-      e.preventDefault();
-      e.stopPropagation();
-
-      isDragging = true;
-      element.classList.add("no-transition");
-
-      const startMouseX = e.clientX;
-      const startMouseY = e.clientY;
-
-      let startElementX = parseInt(element.style.left);
-      let startElementY = parseInt(element.style.top);
-
-      if (isNaN(startElementX) || isNaN(startElementY)) {
-        const rect = element.getBoundingClientRect();
-        startElementX = rect.left;
-        startElementY = rect.top;
-        element.style.left = startElementX + "px";
-        element.style.top = startElementY + "px";
-        element.style.right = "auto";
-        element.style.bottom = "auto";
-      }
-
-      element.style.cursor = "grabbing";
-      document.body.style.userSelect = "none";
-
-      const onMouseMove = (e) => {
-        if (!isDragging) return;
-        const deltaX = e.clientX - startMouseX;
-        const deltaY = e.clientY - startMouseY;
-
-        let newLeft = startElementX + deltaX;
-        let newTop = startElementY + deltaY;
-
-        const bounds = getContainerBounds();
-        const rect = element.getBoundingClientRect();
-
-        const maxLeft = bounds.right - rect.width;
-        const maxTop = bounds.bottom - rect.height;
-        const minLeft = bounds.left;
-        const minTop = bounds.top;
-
-        newLeft = Math.max(minLeft, Math.min(maxLeft, newLeft));
-        newTop = Math.max(minTop, Math.min(maxTop, newTop));
-
-        element.style.left = newLeft + "px";
-        element.style.top = newTop + "px";
-        element.style.right = "auto";
-        element.style.bottom = "auto";
-      };
-
-      const onMouseUp = () => {
-        isDragging = false;
-        element.classList.remove("no-transition");
-        element.style.cursor = "grab";
-        document.body.style.userSelect = "";
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
-      };
-
-      document.addEventListener("mousemove", onMouseMove);
-      document.addEventListener("mouseup", onMouseUp);
-    });
-
-    element.style.opacity = "0";
-    element.style.pointerEvents = "none";
-
-    const initializeVideoPosition = () => {
-      setTimeout(() => {
-        const bounds = getContainerBounds();
-
-        let videoWidth, videoHeight, leftX, topY;
-
-        {
-          videoWidth = 160;
-          videoHeight = 120;
-          const padding = 20;
-
-          leftX = bounds.left + bounds.width - videoWidth - padding;
-          topY = bounds.top + bounds.height - videoHeight - padding;
-        }
-
-        element.style.position = "fixed";
-        element.style.left = leftX + "px";
-        element.style.top = topY + "px";
-        element.style.width = videoWidth + "px";
-        element.style.height = videoHeight + "px";
-        element.style.right = "auto";
-        element.style.bottom = "auto";
-
-        element.style.opacity = "1";
-        element.style.pointerEvents = "auto";
-
-        videoInitialized = true;
-      }, 600);
-    };
-
-    initializeVideoPosition();
-
-    const transitionEndHandler = (e) => {
-      if (
-        e.propertyName === "width" ||
-        e.propertyName === "height" ||
-        e.propertyName === "transform"
-      ) {
-        if (videoInitialized) {
-          element.style.opacity = "0";
-        }
+        item.classList.add("selected");
 
         setTimeout(() => {
-          const bounds = getContainerBounds();
-          const rect = element.getBoundingClientRect();
-
-          const needsAdjustment =
-            rect.left < bounds.left ||
-            rect.top < bounds.top ||
-            rect.right > bounds.right ||
-            rect.bottom > bounds.bottom;
-
-          if (needsAdjustment) {
-            adjustElementPosition();
-          }
-
-          if (videoInitialized) {
-            setTimeout(() => {
-              element.style.opacity = "1";
-            }, 30);
-          }
-        }, 50);
-      }
-    };
-
-    element.addEventListener("transitionend", transitionEndHandler);
-
-    let videoInitialized = false;
-
-    const resizeObserver = new ResizeObserver(() => {
-      if (videoInitialized) {
-        element.style.opacity = "0";
-      }
-
-      setTimeout(() => {
-        const bounds = getContainerBounds();
-        const rect = element.getBoundingClientRect();
-
-        const needsAdjustment =
-          rect.left < bounds.left ||
-          rect.top < bounds.top ||
-          rect.right > bounds.right ||
-          rect.bottom > bounds.bottom;
-
-        if (needsAdjustment) {
-          adjustElementPosition();
-        }
-
-        if (videoInitialized) {
-          setTimeout(() => {
-            element.style.opacity = "1";
-          }, 50);
-        }
-      }, 400);
-    });
-
-    const containers = [
-      document.querySelector("#bc-container"),
-      document.querySelector("#bc-root"),
-      this.container,
-      this.root,
-    ].filter(Boolean);
-
-    containers.forEach((container) => {
-      if (container) {
-        resizeObserver.observe(container);
+          dropdown.style.opacity = "0";
+          setTimeout(() => dropdown.remove(), 200);
+        }, 300);
       }
     });
 
-    const windowResizeHandler = () => {
-      if (videoInitialized) {
-        element.style.opacity = "0";
-      }
-
-      setTimeout(() => {
-        const bounds = getContainerBounds();
-        const rect = element.getBoundingClientRect();
-
-        const needsAdjustment =
-          rect.left < bounds.left ||
-          rect.top < bounds.top ||
-          rect.right > bounds.right ||
-          rect.bottom > bounds.bottom;
-
-        if (needsAdjustment) {
-          console.log("Window resized, element outside bounds, adjusting...");
-          adjustElementPosition();
-        }
-
-        if (videoInitialized) {
-          setTimeout(() => {
-            element.style.opacity = "1";
-          }, 50);
-        }
-      }, 400);
-    };
-
-    window.addEventListener("resize", windowResizeHandler);
-
-    element._resizeObserver = resizeObserver;
-    element._windowResizeHandler = windowResizeHandler;
-
-    element._cleanupResizeHandlers = () => {
-      if (element._resizeObserver) {
-        element._resizeObserver.disconnect();
-        element._resizeObserver = null;
-      }
-      if (element._windowResizeHandler) {
-        window.removeEventListener("resize", element._windowResizeHandler);
-        element._windowResizeHandler = null;
-      }
-      if (transitionEndHandler) {
-        element.removeEventListener("transitionend", transitionEndHandler);
-      }
-    };
-
-    this.updateVideoBorder(element);
+    return item;
   }
 
-  updateVideoBorder(element) {
-    const video = element.querySelector("video");
-    if (video && !video.classList.contains("hidden")) {
-      element.classList.add("video-on");
-    } else {
-      element.classList.remove("video-on");
-    }
+  addDeviceSection(dropdown, devices, currentId, type, platform) {
+    const defaultLabel =
+      type === "speaker" ? "Default Speaker" : "Default Microphone";
+    const defaultDevice = { deviceId: "default", label: defaultLabel };
+    const defaultItem = this.createDeviceItem(
+      defaultDevice,
+      currentId === "default",
+      type,
+      platform
+    );
+    dropdown.appendChild(defaultItem);
+
+    devices.forEach((device) => {
+      const item = this.createDeviceItem(
+        device,
+        device.deviceId === currentId,
+        type,
+        platform
+      );
+      dropdown.appendChild(item);
+    });
   }
 
   async showAudioDevices(e) {
@@ -2040,6 +2110,7 @@ class BastyonCalls extends EventEmitter {
       return;
     }
 
+    const platform = this.detectPlatform();
     const devices = await this.getAudioDevices();
     const currentOutput =
       localStorage.getItem("preferredAudioOutput") || "default";
@@ -2051,58 +2122,22 @@ class BastyonCalls extends EventEmitter {
 
     const speakerHeader = document.createElement("div");
     speakerHeader.className = "bc-audio-dropdown-header";
-    speakerHeader.innerHTML =
-      '<i class="fas fa-volume-up"></i> Speakers / Headphones';
+    const speakerHeaderText =
+      platform === "android"
+        ? "Audio Output"
+        : platform === "ios"
+        ? "Output"
+        : "Speakers / Headphones";
+    speakerHeader.innerHTML = `<i class="fas fa-volume-up"></i> ${speakerHeaderText}`;
     dropdown.appendChild(speakerHeader);
 
-    const defaultSpeaker = document.createElement("div");
-    defaultSpeaker.className = `bc-audio-dropdown-item ${currentOutput === "default" ? "selected" : ""}`;
-    defaultSpeaker.innerHTML = `
-          <i class="fas fa-volume-up"></i>
-          <span>Default Speaker</span>
-      `;
-    defaultSpeaker.addEventListener("click", async () => {
-      const success = await this.setAudioOutput("");
-      if (success) {
-        this.updateDropdownSelection(dropdown, defaultSpeaker, "speaker");
-        dropdown.remove();
-      }
-    });
-    dropdown.appendChild(defaultSpeaker);
-
-    devices.speakers.forEach((device, index) => {
-      const item = document.createElement("div");
-      item.className = `bc-audio-dropdown-item ${device.deviceId === currentOutput ? "selected" : ""}`;
-
-      let icon = "fas fa-volume-up";
-      const label = device.label.toLowerCase();
-      if (label.includes("headphone") || label.includes("headset")) {
-        icon = "fas fa-headphones";
-      } else if (
-        label.includes("bluetooth") ||
-        label.includes("airpod") ||
-        label.includes("wh-")
-      ) {
-        icon = "fab fa-bluetooth-b";
-      }
-
-      const deviceName = device.label || `Speaker ${index + 1}`;
-      item.innerHTML = `
-              <i class="${icon}"></i>
-              <span title="${deviceName}">${deviceName}</span>
-          `;
-
-      item.addEventListener("click", async () => {
-        console.log("Setting audio output to:", device.deviceId);
-        const success = await this.setAudioOutput(device.deviceId);
-        if (success) {
-          this.updateDropdownSelection(dropdown, item, "speaker");
-          dropdown.remove();
-        }
-      });
-
-      dropdown.appendChild(item);
-    });
+    this.addDeviceSection(
+      dropdown,
+      devices.speakers,
+      currentOutput,
+      "speaker",
+      platform
+    );
 
     const separator = document.createElement("div");
     separator.className = "bc-audio-dropdown-separator";
@@ -2110,61 +2145,24 @@ class BastyonCalls extends EventEmitter {
 
     const micHeader = document.createElement("div");
     micHeader.className = "bc-audio-dropdown-header";
-    micHeader.innerHTML = '<i class="fas fa-microphone"></i> Microphones';
+    const micHeaderText =
+      platform === "android"
+        ? "Microphone"
+        : platform === "ios"
+        ? "Input"
+        : "Microphones";
+    micHeader.innerHTML = `<i class="fas fa-microphone"></i> ${micHeaderText}`;
     dropdown.appendChild(micHeader);
 
-    // Default microphone
-    const defaultMic = document.createElement("div");
-    defaultMic.className = `bc-audio-dropdown-item ${currentInput === "default" ? "selected" : ""}`;
-    defaultMic.innerHTML = `
-          <i class="fas fa-microphone"></i>
-          <span>Default Microphone</span>
-      `;
-    defaultMic.addEventListener("click", async () => {
-      const success = await this.setMicrophoneInput("");
-      if (success) {
-        this.updateDropdownSelection(dropdown, defaultMic, "microphone");
-        dropdown.remove();
-      }
-    });
-    dropdown.appendChild(defaultMic);
-
-    // Microphones
-    devices.microphones.forEach((device, index) => {
-      const item = document.createElement("div");
-      item.className = `bc-audio-dropdown-item ${device.deviceId === currentInput ? "selected" : ""}`;
-
-      let icon = "fas fa-microphone";
-      const label = device.label.toLowerCase();
-      if (
-        label.includes("bluetooth") ||
-        label.includes("airpod") ||
-        label.includes("wh-")
-      ) {
-        icon = "fab fa-bluetooth-b";
-      } else if (label.includes("headset") || label.includes("headphone")) {
-        icon = "fas fa-headset";
-      }
-
-      const deviceName = device.label || `Microphone ${index + 1}`;
-      item.innerHTML = `
-              <i class="${icon}"></i>
-              <span title="${deviceName}">${deviceName}</span>
-          `;
-
-      item.addEventListener("click", async () => {
-        const success = await this.setMicrophoneInput(device.deviceId);
-        if (success) {
-          this.updateDropdownSelection(dropdown, item, "microphone");
-          dropdown.remove();
-        }
-      });
-
-      dropdown.appendChild(item);
-    });
+    this.addDeviceSection(
+      dropdown,
+      devices.microphones,
+      currentInput,
+      "microphone",
+      platform
+    );
 
     document.body.appendChild(dropdown);
-
     setTimeout(() => (dropdown.style.opacity = "1"), 10);
 
     const closeDropdown = (event) => {
@@ -2199,14 +2197,14 @@ class BastyonCalls extends EventEmitter {
 
     if (type === "speaker") {
       startHeader = Array.from(headers).find((h) =>
-        h.innerHTML.includes("Speakers"),
+        h.innerHTML.includes("Speakers")
       );
       endHeader = Array.from(headers).find((h) =>
-        h.innerHTML.includes("Microphones"),
+        h.innerHTML.includes("Microphones")
       );
     } else {
       startHeader = Array.from(headers).find((h) =>
-        h.innerHTML.includes("Microphones"),
+        h.innerHTML.includes("Microphones")
       );
     }
 
@@ -2227,7 +2225,7 @@ class BastyonCalls extends EventEmitter {
     const devices = this.getAudioDevices();
     devices.then((result) => {
       const selectedDevice = result.speakers.find(
-        (d) => d.deviceId === deviceId,
+        (d) => d.deviceId === deviceId
       );
       let icon = "fas fa-volume-up";
 
@@ -2278,12 +2276,12 @@ class BastyonCalls extends EventEmitter {
           if (a === "connected") {
             window.cordova.plugins.CordovaCall.connectCall(
               () => console.log("CallKit connected"),
-              (err) => console.error("CallKit connect error:", err),
+              (err) => console.error("CallKit connect error:", err)
             );
           } else if (a === "ended") {
             window.cordova.plugins.CordovaCall.endCall(
               () => console.log("CallKit ended"),
-              (err) => console.error("CallKit end error:", err),
+              (err) => console.error("CallKit end error:", err)
             );
             if (this.callKitCalls[call.callKitUUID]) {
               delete this.callKitCalls[call.callKitUUID];
@@ -2339,7 +2337,6 @@ class BastyonCalls extends EventEmitter {
       if (this.isScreenSharing) {
         this.stopScreenShare();
       }
-      this.stopAllMediaTracks();
       clearInterval(this.syncInterval);
       this.syncInterval = null;
       console.log("Call ended", call.callId);
@@ -2366,14 +2363,11 @@ class BastyonCalls extends EventEmitter {
           // console.log('second line is active', this.activeCall.callId)
           return;
         }
-        this.renderTemplates.clearVideo();
+
         this.renderTemplates.clearNotify();
 
         if (call.hangupParty === "local" || call.localVideoElement) {
-          if (
-            this.root.classList.contains("minified") ||
-            !this.root.classList.length
-          ) {
+          if (this.root.classList.contains("minified")) {
             this.renderTemplates.clearVideo();
             this.renderTemplates.clearInterface();
             this.activeCall = null;
@@ -2399,6 +2393,7 @@ class BastyonCalls extends EventEmitter {
         }
 
         this.signal.pause();
+        this.renderTemplates.clearVideo();
         this.renderTemplates.clearInterface();
         this.activeCall = null;
       }
@@ -2410,7 +2405,7 @@ class BastyonCalls extends EventEmitter {
       this.signal.pause();
       let members = this.client.store.rooms[call.roomId].currentState.members;
       let initiatorId = Object.keys(members).filter(
-        (m) => m !== this.client.credentials.userId,
+        (m) => m !== this.client.credentials.userId
       );
       let initiator = members[initiatorId];
       let user = members[this.client.credentials.userId];
@@ -2444,7 +2439,7 @@ class BastyonCalls extends EventEmitter {
             function () {
               this.answer();
             }.bind(this),
-            1000,
+            1000
           );
         } else {
           this.answer();
@@ -2480,11 +2475,6 @@ class BastyonCalls extends EventEmitter {
 
   showRemoteVideo() {
     this.setRemoteElement();
-
-    const screenShareButton = document.getElementById("bc-screen-share");
-    if (screenShareButton) {
-      screenShareButton.disabled = false;
-    }
   }
 
   showConnecting() {
@@ -2521,7 +2511,7 @@ class BastyonCalls extends EventEmitter {
         var r = (Math.random() * 16) | 0;
         var v = c == "x" ? r : (r & 0x3) | 0x8;
         return v.toString(16);
-      },
+      }
     );
   }
 
@@ -2546,7 +2536,7 @@ class BastyonCalls extends EventEmitter {
           (err) => {
             console.error("CallKit receiveCall error:", err);
             this.showWebIncomingCall(call);
-          },
+          }
         );
         return;
       } catch (error) {
@@ -2588,106 +2578,10 @@ class BastyonCalls extends EventEmitter {
     }
   }
 
-  async getElectronScreenStream() {
-    try {
-      console.log("Getting screen sources from Electron...");
-
-      const sources = await window.electron.ipcRenderer.invoke(
-        "get-desktop-sources",
-      );
-
-      if (!sources || sources.length === 0) {
-        throw new Error("No screen sources available");
-      }
-
-      let selectedSource;
-      if (sources.length > 1) {
-        selectedSource = await this.showElectronSourceSelector(sources);
-      } else {
-        selectedSource = sources[0];
-      }
-
-      if (!selectedSource) {
-        throw new Error("No screen source selected");
-      }
-
-      const screenStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          mandatory: {
-            chromeMediaSource: "desktop",
-            chromeMediaSourceId: selectedSource.id,
-          },
-        },
-        video: {
-          mandatory: {
-            chromeMediaSource: "desktop",
-            chromeMediaSourceId: selectedSource.id,
-            minWidth: 1280,
-            maxWidth: 1920,
-            minHeight: 720,
-            maxHeight: 1080,
-          },
-        },
-      });
-
-      return screenStream;
-    } catch (error) {
-      console.error("Error getting Electron screen stream:", error);
-      throw error;
-    }
-  }
-
-  async showElectronSourceSelector(sources) {
-    return new Promise((resolve) => {
-      const modal = document.createElement("div");
-      modal.className = "bc-electron-source-selector";
-
-      const dialog = document.createElement("div");
-
-      const title = document.createElement("h3");
-      title.textContent = "Select Screen or Window to Share";
-      dialog.appendChild(title);
-
-      const sourceList = document.createElement("div");
-
-      sources.forEach((source) => {
-        const sourceItem = document.createElement("div");
-
-        if (source.thumbnail) {
-          const img = document.createElement("img");
-          img.src = source.thumbnail;
-          sourceItem.appendChild(img);
-        }
-
-        const label = document.createElement("div");
-        label.textContent = source.name;
-        sourceItem.appendChild(label);
-
-        sourceItem.addEventListener("click", () => {
-          modal.remove();
-          resolve(source);
-        });
-
-        sourceList.appendChild(sourceItem);
-      });
-
-      dialog.appendChild(sourceList);
-
-      const cancelBtn = document.createElement("button");
-      cancelBtn.textContent = "Cancel";
-      cancelBtn.addEventListener("click", () => {
-        modal.remove();
-        resolve(null);
-      });
-      dialog.appendChild(cancelBtn);
-
-      modal.appendChild(dialog);
-      document.body.appendChild(modal);
-    });
-  }
-
   async createCompositeStream(cameraStream, screenStream) {
     try {
+      console.log("Creating composite stream...");
+
       if (!screenStream || !screenStream.getVideoTracks().length) {
         console.error("Invalid screen stream");
         return null;
@@ -2715,7 +2609,7 @@ class BastyonCalls extends EventEmitter {
       await new Promise((resolve, reject) => {
         const timeout = setTimeout(
           () => reject(new Error("Screen video timeout")),
-          5000,
+          5000
         );
 
         screenVideo.onloadeddata = () => {
@@ -2825,23 +2719,17 @@ class BastyonCalls extends EventEmitter {
         return false;
       }
 
-      let screenStream;
-
-      if (window.electron && window.electron.ipcRenderer) {
-        screenStream = await this.getElectronScreenStream();
-      } else {
-        screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            cursor: "always",
-            displaySurface: "monitor",
-          },
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          },
-        });
-      }
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          cursor: "always",
+          displaySurface: "monitor",
+        },
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
 
       screenStream.getVideoTracks()[0].addEventListener("ended", () => {
         console.log("Screen share ended by user");
@@ -2850,7 +2738,7 @@ class BastyonCalls extends EventEmitter {
 
       const senders = this.activeCall.peerConn.getSenders();
       let videoSender = senders.find(
-        (sender) => sender.track && sender.track.kind === "video",
+        (sender) => sender.track && sender.track.kind === "video"
       );
 
       const controls = document.getElementById("controls");
@@ -2862,7 +2750,7 @@ class BastyonCalls extends EventEmitter {
         "Call type:",
         isVoiceCall ? "voice" : "video",
         "Has active video:",
-        hasActiveVideo,
+        hasActiveVideo
       );
 
       let finalStream;
@@ -2885,7 +2773,7 @@ class BastyonCalls extends EventEmitter {
         if (cameraStream) {
           finalStream = await this.createCompositeStream(
             cameraStream,
-            screenStream,
+            screenStream
           );
         }
 
@@ -2913,7 +2801,7 @@ class BastyonCalls extends EventEmitter {
 
             videoSender = this.activeCall.peerConn.addTrack(
               tempTrack,
-              tempStream,
+              tempStream
             );
             setTimeout(() => tempTrack.stop(), 100);
           }
@@ -2926,6 +2814,7 @@ class BastyonCalls extends EventEmitter {
         throw new Error("Failed to create stream");
       }
 
+      // Сохраняем состояние
       this.originalVideoTrack = videoSender.track;
       this.screenStream = screenStream;
       this.hadActiveVideoBeforeScreenShare = hasActiveVideo;
@@ -3056,7 +2945,7 @@ class BastyonCalls extends EventEmitter {
 
       const senders = this.activeCall.peerConn.getSenders();
       const videoSender = senders.find(
-        (sender) => sender.track && sender.track.kind === "video",
+        (sender) => sender.track && sender.track.kind === "video"
       );
 
       if (videoSender) {
@@ -3086,7 +2975,7 @@ class BastyonCalls extends EventEmitter {
                     height: { ideal: 360 },
                   },
                   audio: false,
-                },
+                }
               );
 
               const newVideoTrack = newCameraStream.getVideoTracks()[0];
@@ -3102,6 +2991,7 @@ class BastyonCalls extends EventEmitter {
             }
           }
         } else {
+          // Видео не было активно - отключаем трек
           console.log("No video was active before, disabling video track...");
           await videoSender.replaceTrack(null);
 
@@ -3111,6 +3001,7 @@ class BastyonCalls extends EventEmitter {
           }
         }
 
+        // Останавливаем старый трек от демонстрации
         if (oldTrack && oldTrack !== this.originalVideoTrack) {
           oldTrack.stop();
         }
@@ -3190,7 +3081,7 @@ class BastyonCalls extends EventEmitter {
 
       const senders = this.activeCall.peerConn.getSenders();
       const videoSender = senders.find(
-        (sender) => sender.track && sender.track.kind === "video",
+        (sender) => sender.track && sender.track.kind === "video"
       );
 
       if (!videoSender) {
@@ -3417,37 +3308,6 @@ class BastyonCalls extends EventEmitter {
         })();
       }
     });
-  }
-
-  stopAllMediaTracks() {
-    try {
-      if (this.activeCall?.peerConn) {
-        const senders = this.activeCall.peerConn.getSenders();
-        senders.forEach((sender) => {
-          if (sender.track) {
-            sender.track.stop();
-          }
-        });
-      }
-
-      const localVideo = document.getElementById("local");
-      if (localVideo && localVideo.srcObject) {
-        localVideo.srcObject.getTracks().forEach((track) => track.stop());
-        localVideo.srcObject = null;
-      }
-
-      if (this.cameraStream) {
-        this.cameraStream.getTracks().forEach((track) => track.stop());
-        this.cameraStream = null;
-      }
-
-      if (this.screenStream) {
-        this.screenStream.getTracks().forEach((track) => track.stop());
-        this.screenStream = null;
-      }
-    } catch (error) {
-      console.error("Error stopping media tracks:", error);
-    }
   }
 }
 
